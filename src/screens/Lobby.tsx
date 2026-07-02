@@ -76,8 +76,15 @@ export default function Lobby({ nickname, pool, market, onEnterRoom, onSoloRoom,
 
   useEffect(() => {
     refresh();
+    const sock = getSocket();
+    // 서버 푸시로 방 생성/입장/퇴장/상태 변경을 즉시 반영. 폴링은 푸시 누락 대비 백업.
+    const onRooms = (p: { rooms: RoomSummary[] }) => setRooms(p.rooms);
+    sock.on("lobby:rooms", onRooms);
     const id = window.setInterval(refresh, 4000);
-    return () => window.clearInterval(id);
+    return () => {
+      sock.off("lobby:rooms", onRooms);
+      window.clearInterval(id);
+    };
   }, [refresh]);
 
   // ── 입장 ─────────────────────────────────────────────────────

@@ -138,6 +138,7 @@ export class RoomManager {
     if (typeof cfg === "string") return { ok: false, error: cfg };
     this.leaveSocket(socket); // 기존 방이 있으면 나가고 새 방 생성
     const room = this.instantiateRoom(pid, this.nicknames.get(pid) ?? "게스트", cfg, socket);
+    this.broadcastLobby(); // 새 방을 로비에 즉시 노출
     return { ok: true, data: { room: this.toDetail(room) } };
   }
 
@@ -151,6 +152,7 @@ export class RoomManager {
     const pid = typeof b.playerId === "string" && b.playerId ? b.playerId : "p-" + randomUUID();
     this.nicknames.set(pid, nick);
     const room = this.instantiateRoom(pid, nick, cfg, null);
+    this.broadcastLobby(); // REST 로 만든 방도 로비에 즉시 노출
     return { ok: true, data: { room: this.toDetail(room) } };
   }
 
@@ -254,6 +256,7 @@ export class RoomManager {
     this.io.to(room.roomId).emit("room:closed", { reason });
     this.io.in(room.roomId).socketsLeave(room.roomId);
     this.rooms.delete(room.roomId);
+    this.broadcastLobby(); // 삭제된 방을 로비에서 즉시 제거
   }
 
   // ── 설정/시작 ──────────────────────────────────────────────
@@ -379,5 +382,12 @@ export class RoomManager {
 
   broadcastRoom(room: Room): void {
     this.io.to(room.roomId).emit("room:update", { room: this.toDetail(room) });
+    this.broadcastLobby();
+  }
+
+  /** 로비(전체 접속자)에 방 목록 변경을 즉시 푸시 — 4초 폴링 지연 없이 실시간 반영.
+   *  게임 화면 등 로비 미표시 클라이언트는 리스너가 없어 무시한다. */
+  broadcastLobby(): void {
+    this.io.emit("lobby:rooms", { rooms: this.list() });
   }
 }

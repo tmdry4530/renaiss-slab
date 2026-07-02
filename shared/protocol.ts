@@ -165,6 +165,7 @@ export interface ClientToServer {
 }
 
 export interface ServerToClient {
+  "lobby:rooms": (p: { rooms: RoomSummary[] }) => void; // 로비 목록 실시간 푸시 (방 생성/입장/퇴장/상태 변경)
   "room:update": (p: { room: RoomDetail }) => void;
   "room:closed": (p: { reason: string }) => void;
   "board:init": (p: BoardInit) => void;
