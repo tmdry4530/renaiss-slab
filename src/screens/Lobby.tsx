@@ -148,13 +148,15 @@ export default function Lobby({ nickname, pool, market, onEnterRoom, onSoloRoom,
     });
   }
 
-  // ── 혼자 바로 하기: 1인 비공개 방 생성 → 즉시 game:start ────
+  // ── 혼자 바로 하기: 1인 방 생성 → 즉시 game:start ────
+  // 서버 계약상 비공개(private) 방은 비밀번호가 필수이므로(rooms.ts sanitizeConfig),
+  // 솔로는 공개(public) 방으로 만든다. maxPlayers:1 이라 정원이 즉시 차서 남이 입장할 수 없다.
   function soloPlay() {
     if (busy) return;
     setBusy(true);
     const cfg: RoomConfig = {
       name: `${nickname}의 싱글 플레이`,
-      visibility: "private",
+      visibility: "public",
       maxPlayers: 1,
       game: draft.game,
       mapMode: draft.mapMode,
