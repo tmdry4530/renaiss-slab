@@ -25,7 +25,6 @@ interface Props {
   init: BoardInit;
   room: RoomDetail | null;
   myId: string;
-  onLeave: () => void;
 }
 
 const ASPECT = 1.4;
@@ -112,7 +111,7 @@ function useViewport() {
   return vp;
 }
 
-export default function Game({ init, room, myId, onLeave }: Props) {
+export default function Game({ init, room, myId }: Props) {
   const cards = init.cards;
   const cardOf = (t: TileState): GameCard => cards[t.cardIdx];
 
@@ -311,7 +310,7 @@ export default function Game({ init, room, myId, onLeave }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
-  // 콤보 창(2초) 만료 → 표시 리셋
+  // 콤보 창(COMBO_WINDOW_MS) 만료 → 표시 리셋
   useEffect(() => {
     if (combo <= 0) return;
     const id = window.setTimeout(() => setCombo(0), COMBO_WINDOW_MS);
@@ -701,7 +700,14 @@ export default function Game({ init, room, myId, onLeave }: Props) {
 
         <div className="spacer" />
         <button className="btn btn-dark btn-block" onClick={() => flash("옵션은 준비 중입니다")}>옵션</button>
-        <button className="btn btn-danger btn-block" onClick={onLeave}>나가기</button>
+        {/* 게임 중 일방적 이탈 금지 (플레이 피드백) — 결과 화면 → 대기실 경로로만 퇴장 */}
+        <button
+          className="btn btn-dark btn-block"
+          onClick={() => flash("게임 중에는 나갈 수 없습니다")}
+          title="게임 중에는 나갈 수 없습니다"
+        >
+          🔒 나가기
+        </button>
       </aside>
 
       {/* 1위 확정 → 10초 유예 카운트다운 (플레이는 계속 가능) */}

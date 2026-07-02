@@ -91,9 +91,10 @@ export const DIFFICULTIES: Difficulty[] = [
 
 // UP 모드: 시작 시 하단에 미리 깔아두는 줄 수 (rows 보다 작게 캡). 나머지 상단은 빈 상태로 시작.
 export const UP_INITIAL_ROWS = 3;
-// 승리 모드: 난이도별 삽입할 "승" 합성 카드 쌍 수 (easy1/normal2/hard2).
-export function victoryPairsFor(diff: Difficulty): number {
-  return diff.key === "easy" ? 1 : 2;
+// 승리 모드: 삽입할 "승" 합성 카드 쌍 수. 모든 "승" 타일은 matchKey 가 같아 어느 둘이든
+// 이어지면 즉시 종료되므로, 시작 시 서로 붙지 않게 배치하기 쉽도록 항상 1쌍(2장)만 넣는다.
+export function victoryPairsFor(_diff: Difficulty): number {
+  return 1;
 }
 
 export function resolveDifficulty(d: DifficultyKey | Difficulty): Difficulty {
@@ -268,22 +269,21 @@ export function generateBoard(
 
   // 배치 시도: 시작부터 최소 한 수 보장 (실패 시 재셔플 → 재시도, 모두 시드 rnd 기반)
   for (let attempt = 0; attempt < 60; attempt++) {
+    // 승리 모드: 매 시도마다 "승" 셀을 내부·분산으로 다시 고른다(시작 시 짝이 붙어
+    // 즉시 종료되던 문제 방지 — 연결 가능한 배치는 아래 게이트에서 걸러 다음 시도로 넘긴다).
+    const victoryCells =
+      vCard && victoryPairs > 0
+        ? pickVictoryCells(layerCells[0], Math.min(victoryPairs * 2, layerCells[0].length), rnd)
+        : [];
+    const victorySet = new Set(victoryCells.map((p) => `${p.r},${p.c}`));
     const tiles: Tile[] = [];
     let tileId = 0;
     for (let layer = 0; layer < layerCells.length; layer++) {
       const cells = layerCells[layer];
       const layerKinds = kindsByLayer[layer];
-      if (layer === 0 && vCard && victoryPairs > 0) {
-        // 중앙 거리순 정렬 → 앞쪽 victoryPairs*2 셀에 "승" 카드, 나머지는 일반 페어
-        const cr = (diff.rows + 1) / 2;
-        const cc = (diff.cols + 1) / 2;
-        const ordered = cells
-          .map((cell) => ({ cell, d: (cell.r - cr) ** 2 + (cell.c - cc) ** 2 }))
-          .sort((a, b) => a.d - b.d || a.cell.r - b.cell.r || a.cell.c - b.cell.c)
-          .map((x) => x.cell);
-        const vCount = Math.min(victoryPairs * 2, cells.length);
-        const victoryCells = ordered.slice(0, vCount);
-        const normalCells = ordered.slice(vCount);
+      if (layer === 0 && vCard && victoryCells.length > 0) {
+        // "승" 카드는 미리 고른 내부·분산 셀에 고정, 나머지 셀에 일반 페어를 채운다.
+        const normalCells = cells.filter((cell) => !victorySet.has(`${cell.r},${cell.c}`));
         const normPairs = normalCells.length / 2;
         const deck: GameCard[] = [];
         for (let p = 0; p < normPairs; p++) {
@@ -356,11 +356,65 @@ export function generateBoard(
       reserve: [],
       nextTileId: tileId,
     };
+    if (vCard && victoryCells.length > 0) {
+      // 승리 모드: 시작 시 "승" 짝이 서로 이어지면(=즉시 종료 위험) 이번 배치를 버리고 재시도.
+      // reshuffleWith 는 "승" 위치를 흩뜨리므로 쓰지 않고, 다음 시도에서 셀·덱을 다시 고른다.
+      if (!victoryPairConnectable(board) && hasMove(board)) return board;
+      continue;
+    }
     if (hasMove(board)) return board;
     reshuffleWith(board, rnd);
     if (hasMove(board)) return board;
   }
   throw new Error("보드 생성 실패");
+}
+
+/**
+ * 승리 "승" 카드를 놓을 셀 선택 — 시작하자마자 짝이 붙어 즉시 종료되는 것을 막기 위해:
+ *  1) 내부(4방향 이웃이 모두 채워지는) 셀만 후보로 삼아 꽉 찬 보드에서 서로 이어지지 않게 하고,
+ *  2) 서로 최대한 멀리(체비쇼프 거리 최대) 퍼뜨려 인접을 피한다.
+ * 내부 셀이 부족하면 전체 셀에서 퍼뜨린다(연결 여부는 호출측 victoryPairConnectable 로 최종 검증).
+ */
+function pickVictoryCells(cells: Point[], count: number, rnd: () => number): Point[] {
+  const key = (r: number, c: number) => `${r},${c}`;
+  const present = new Set(cells.map((p) => key(p.r, p.c)));
+  const interior = cells.filter(
+    (p) =>
+      present.has(key(p.r - 1, p.c)) &&
+      present.has(key(p.r + 1, p.c)) &&
+      present.has(key(p.r, p.c - 1)) &&
+      present.has(key(p.r, p.c + 1))
+  );
+  const pool = seededShuffle(interior.length >= count ? interior : cells, rnd);
+  if (pool.length <= count) return pool.slice(0, count);
+  const cheb = (a: Point, b: Point) => Math.max(Math.abs(a.r - b.r), Math.abs(a.c - b.c));
+  const picked: Point[] = [pool[0]];
+  while (picked.length < count) {
+    let best: Point | null = null;
+    let bestD = -1;
+    for (const p of pool) {
+      if (picked.some((q) => q.r === p.r && q.c === p.c)) continue;
+      const d = Math.min(...picked.map((q) => cheb(q, p)));
+      if (d > bestD) {
+        bestD = d;
+        best = p;
+      }
+    }
+    if (!best) break;
+    picked.push(best);
+  }
+  return picked;
+}
+
+/** 시작(꽉 찬 보드)에서 "승" 타일끼리 이어지는 짝이 하나라도 있으면 true (즉시 종료 위험). */
+function victoryPairConnectable(board: Board): boolean {
+  const vt = board.tiles.filter((t) => !t.removed && t.victory && t.layer === 0);
+  if (vt.length < 2) return false;
+  const grid = occupiedGrid(board, 0);
+  for (let i = 0; i < vt.length; i++)
+    for (let j = i + 1; j < vt.length; j++)
+      if (findPath(grid, pt(vt[i]), pt(vt[j]))) return true;
+  return false;
 }
 
 // UP 모드 전용 생성: 하단 UP_INITIAL_ROWS 줄만 채우고 상단은 빈 상태로 시작.

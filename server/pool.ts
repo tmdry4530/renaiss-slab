@@ -16,6 +16,17 @@ export class PoolStore {
 
   constructor(filePath: string = DEFAULT_POOL_PATH) {
     this.pool = JSON.parse(readFileSync(filePath, "utf8")) as CardPool;
+
+    // 언어 통일: 실제 수집 시장에서 언어별로 가치가 다르고, 게임 화면에선 일어/영어 구분이
+    // 잘 안 보인다는 피드백 → 일본어 카드로만 판을 구성한다(도감·매칭 모두 일본어 기준).
+    // 단, 특정 게임의 일본어 사용 카드가 너무 적으면(<8) 필터를 적용하지 않아 판 구성 실패를 막는다.
+    const jp = this.pool.cards.filter((c) => c.language === "Japanese");
+    const usableJp = (game: "pokemon" | "one-piece") =>
+      jp.filter((c) => c.game === game && c.imageUrl).length;
+    if (usableJp("pokemon") >= 8 && usableJp("one-piece") >= 8) {
+      this.pool.cards = jp;
+    }
+
     for (const c of this.pool.cards) this.byId.set(c.cardId, c);
     this.totals = {
       pokemon: this.pool.cards.filter((c) => c.game === "pokemon").length,

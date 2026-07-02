@@ -194,7 +194,7 @@ export default function App() {
       )}
 
       {screen === "game" && boardInit && (
-        <Game key={gameNo} init={boardInit} room={room} myId={playerId} onLeave={leaveRoom} />
+        <Game key={gameNo} init={boardInit} room={room} myId={playerId} />
       )}
 
       {screen === "result" && result && (

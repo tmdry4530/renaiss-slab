@@ -1,6 +1,6 @@
 // F-15 결과 요약 화면 (match:ended) — 순위표(메달·내 행 하이라이트)·내 요약·오늘 만난 카드·
 // 등급 분포·최고가 카드·도감 신규 등록 하이라이트·도감 달성률·SBT 보상 받기·마켓/재시작/로비 액션
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RENAISS_INDEX_BASE, marketUrl, usd } from "../../shared/cards.ts";
 import type {
   PlayerSummary,
@@ -29,6 +29,10 @@ interface Props {
 const medal = (rank: number): string =>
   rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : String(rank);
 
+// 로비 사이드바에 표시되는 로컬 통계 카운터(Lobby.tsx 와 동일 키)
+const STAT_PLAYS_KEY = "rsk:stats:plays";
+const STAT_WINS_KEY = "rsk:stats:wins";
+
 export default function Result({ ranks, summaries, myId, canRetry, roomName, onRetry, onLobby, flash }: Props) {
   const my = summaries.find((s) => s.playerId === myId) ?? null;
   const myRank = ranks.find((r) => r.playerId === myId) ?? null;
@@ -44,6 +48,25 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
     () => Math.max(1, ...(my?.gradeDist ?? []).map((g) => g.count)),
     [my]
   );
+
+  // 총 플레이 +1 / (2명 이상 대전에서만) 1위 +1 — 결과 화면 진입 시 1회 집계.
+  // 혼자 하기(참가자 1명)의 1위는 승수에 포함하지 않는다(플레이 피드백).
+  const countedRef = useRef(false);
+  useEffect(() => {
+    if (countedRef.current) return;
+    countedRef.current = true;
+    try {
+      const bump = (key: string) => {
+        const n = Math.max(0, Math.floor(Number(localStorage.getItem(key)) || 0));
+        localStorage.setItem(key, String(n + 1));
+      };
+      bump(STAT_PLAYS_KEY);
+      if (myRank?.rank === 1 && ranks.length > 1) bump(STAT_WINS_KEY);
+    } catch {
+      /* localStorage 사용 불가 — 무시 */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function claim(category: "pokemon" | "one-piece") {
     if (claiming) return;
@@ -106,18 +129,24 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
           </table>
         </div>
 
-        <button className="btn btn-accent btn-block result-leave" onClick={onLobby}>나가기</button>
-        {canRetry && (
-          <button className="btn btn-dark btn-block" onClick={onRetry}>🔁 다시 하기</button>
-        )}
-        {!canRetry && (
-          <p className="muted small center">방이 닫혀 다시 하기를 할 수 없어요 — 로비에서 새 방을 만들어 주세요.</p>
+        {/* 퇴장은 대기실을 거쳐서만 — 결과 → 대기실 → (대기실의 나가기) → 로비 (플레이 피드백) */}
+        {canRetry ? (
+          <button className="btn btn-accent btn-block result-leave" onClick={onRetry}>
+            🏠 대기실로 돌아가기
+          </button>
+        ) : (
+          <>
+            <button className="btn btn-accent btn-block result-leave" onClick={onLobby}>
+              로비로 나가기
+            </button>
+            <p className="muted small center">방이 닫혀 다시 하기를 할 수 없어요 — 로비에서 새 방을 만들어 주세요.</p>
+          </>
         )}
 
         {/* ── 기존 상세 요약(획득 XP·오늘 만난 카드·등급 분포·최고가·도감 신규/달성률·SBT) 보존 ── */}
         {my && myRank && (
-          <details className="result-summary">
-            <summary>결과 요약 자세히 보기</summary>
+          <details className="result-summary" open>
+            <summary>결과 요약</summary>
 
             <div className="panel">
               <h3>내 결과</h3>
@@ -293,7 +322,9 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
         </div>
         <div className="spacer" />
         <button className="btn btn-dark btn-block" disabled>옵션</button>
-        <button className="btn btn-danger btn-block" onClick={onLobby}>나가기</button>
+        <button className="btn btn-danger btn-block" onClick={canRetry ? onRetry : onLobby}>
+          {canRetry ? "대기실로" : "나가기"}
+        </button>
       </aside>
 
       {/* SBT 발급 연출 */}

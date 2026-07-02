@@ -6,6 +6,7 @@ import {
 import { ComboTracker, comboPowerAt, nextCombo, applyComboPower } from "../shared/combo.ts";
 import { matchScore, finalScore, xpFor, rankPlayers, settlementScore } from "../shared/score.ts";
 import { COMBO_WINDOW_MS } from "../shared/protocol.ts";
+import { findPath } from "../shared/shisen.ts";
 import { readFileSync } from "node:fs";
 
 const pool = JSON.parse(readFileSync(new URL("../public/data/card-pool.json", import.meta.url), "utf8")).cards;
@@ -131,18 +132,37 @@ console.log("[승리]");
   const normal = generateBoard(pool, "normal", 31, { mapMode: "victory" });
   const hard = generateBoard(pool, "hard", 32, { mapMode: "victory" });
   check("easy 승리 타일 1쌍(2장)", easy.tiles.filter((t) => t.victory).length === 2);
-  check("normal 승리 타일 2쌍(4장)", normal.tiles.filter((t) => t.victory).length === 4);
-  check("hard 승리 타일 2쌍(4장)", hard.tiles.filter((t) => t.victory).length === 4);
+  check("normal 승리 타일 1쌍(2장)", normal.tiles.filter((t) => t.victory).length === 2);
+  check("hard 승리 타일 1쌍(2장)", hard.tiles.filter((t) => t.victory).length === 2);
 
   const vTiles = normal.tiles.filter((t) => t.victory);
   check("승리 타일 matchKey = __victory__", vTiles.every((t) => t.matchKey === "__victory__"));
   check("승리 타일은 합성 '승' 카드", vTiles.every((t) => t.card.cardId === "__victory__" && t.card.name === "승리" && t.card.gradeLabel === "승리" && t.card.imageUrl === ""));
   check("승리 카드 cards[]에 1회만 등록", normal.cards.filter((c) => c.cardId === "__victory__").length === 1);
-  check("__victory__ matchKey 는 승리 타일만", normal.tiles.filter((t) => t.matchKey === "__victory__").length === 4);
+  check("__victory__ matchKey 는 승리 타일만", normal.tiles.filter((t) => t.matchKey === "__victory__").length === 2);
   check("모든 승리 타일 cardIdx 정합", vTiles.every((t) => normal.cards[t.cardIdx]?.cardId === "__victory__"));
-  check("toTileStates 가 victory 플래그 보존", toTileStates(normal).filter((s) => s.victory).length === 4);
+  check("toTileStates 가 victory 플래그 보존", toTileStates(normal).filter((s) => s.victory).length === 2);
   // 승리 짝 매칭 → 즉시 승리로 판별 가능 (victory:true 기반)
   check("승리 쌍 식별 가능", vTiles.every((t) => t.victory === true));
+
+  // 회귀 방지(플레이 피드백): 시작(꽉 찬 보드)에서 "승" 짝이 서로 이어지면 즉시 종료됨 →
+  // 여러 시드·난이도에서 시작 시 승리 짝이 절대 연결되지 않아야 한다.
+  const victoryConnectableAtStart = (b: Board): boolean => {
+    const vt = b.tiles.filter((t) => t.victory);
+    const grid = occupiedGrid(b, 0);
+    for (let i = 0; i < vt.length; i++)
+      for (let j = i + 1; j < vt.length; j++)
+        if (findPath(grid, { r: vt[i].r, c: vt[i].c }, { r: vt[j].r, c: vt[j].c })) return true;
+    return false;
+  };
+  let anyStartConnectable = false;
+  for (let s = 0; s < 40 && !anyStartConnectable; s++)
+    for (const d of ["easy", "normal", "hard"] as const)
+      if (victoryConnectableAtStart(generateBoard(pool, d, 1000 + s, { mapMode: "victory" }))) {
+        anyStartConnectable = true;
+        break;
+      }
+  check("승리 짝은 시작 시 서로 연결 불가(즉시 종료 방지)", !anyStartConnectable);
   // 일반 타일은 승리 카드가 아님(전체 짝수 유지)
   check("일반 타일 matchKey 짝수 유지", [...countBy(normal.tiles, (t) => t.matchKey).values()].every((n) => n % 2 === 0));
 }
@@ -177,7 +197,7 @@ console.log("[상하이]");
   }
 }
 
-// ── 7) 콤보: 2초 창·5/10/15/20 발동·파워 적용 ────────────────
+// ── 7) 콤보: 3초 창·5/10/15/20 발동·파워 적용 ────────────────
 console.log("[콤보]");
 {
   check("nextCombo: 창 이내 +1", nextCombo(3, COMBO_WINDOW_MS) === 4);
@@ -185,9 +205,10 @@ console.log("[콤보]");
   const t = new ComboTracker();
   check("첫 매칭 = 콤보 1", t.onMatch(0).combo === 1);
   check("1초 뒤 = 콤보 2", t.onMatch(1000).combo === 2);
-  check("2.5초 뒤 = 콤보 1로 리셋", t.onMatch(3500).combo === 1);
+  check("2.5초 뒤(창 이내) = 콤보 3 유지", t.onMatch(3500).combo === 3);
+  check("3초 초과 뒤 = 콤보 1로 리셋", t.onMatch(7000).combo === 1);
   t.onFail();
-  check("매칭 실패 → 0 리셋(가정)", t.combo === 0 && t.onMatch(4000).combo === 1);
+  check("매칭 실패 → 0 리셋(가정)", t.combo === 0 && t.onMatch(8000).combo === 1);
   // 5/10/15/20 발동
   const t2 = new ComboTracker();
   const powers: string[] = [];

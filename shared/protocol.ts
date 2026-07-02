@@ -20,7 +20,7 @@ export const MAP_MODES: { key: MapMode; label: string; desc: string }[] = [
 
 export const ROLLING_INTERVAL_MS = 3000; // PRD §4.3
 export const UP_RISE_INTERVAL_MS = 4500; // UP 모드: 타이머마다 한 줄씩 위로 상승
-export const COMBO_WINDOW_MS = 2000; // PRD §4.4 콤보 지속시간 2초
+export const COMBO_WINDOW_MS = 3000; // 콤보 지속시간 3초 (플레이 피드백 반영 — 2초는 콤보 잇기 어려움)
 export const FINISH_GRACE_MS = 10000; // 1위 확정 후 10초 유예
 export const DEX_REGISTER_COUNT = 10; // 동일 카드 누적 10회 제거 시 도감 등록
 export const ITEM_QUOTA: Record<ItemType, number> = { search: 3, shuffle: 3, scissor: 1 };

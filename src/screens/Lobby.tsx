@@ -1,9 +1,7 @@
 // F-02/F-03 대기(로비) 화면 — 방 목록 조회·입장, 방 만들기, 혼자 바로 하기, 프로필/통계·마켓 사이드바
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { CardPool, MarketSnapshot } from "../../shared/cards.ts";
-import { DIFFICULTIES } from "../../shared/board.ts";
 import {
-  MAP_MODES,
   type DifficultyKey,
   type GameSel,
   type MapMode,
@@ -458,31 +456,9 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
                 ))}
               </div>
             </div>
-            <div className="mfield">
-              <label>맵 모드</label>
-              <div className="mode-list">
-                {MAP_MODES.map((m) => (
-                  <button
-                    key={m.key}
-                    className={`mode-opt ${draft.mapMode === m.key ? "on" : ""}`}
-                    onClick={() => saveDraft({ ...draft, mapMode: m.key })}
-                  >
-                    <b>{m.label}</b>
-                    <span>{m.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="mfield">
-              <label>난이도</label>
-              <div className="seg">
-                {DIFFICULTIES.map((d) => (
-                  <button key={d.key} className={draft.difficulty === d.key ? "on" : ""} onClick={() => saveDraft({ ...draft, difficulty: d.key })}>
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="muted small" style={{ margin: "2px 0 4px" }}>
+              맵 모드·난이도는 방을 만든 뒤 <b>대기실에서 방장이</b> 선택합니다.
+            </p>
             <div className="modal-actions">
               <button className="ghost" onClick={() => setCreateOpen(false)}>취소</button>
               <button className="btn primary" onClick={createRoom} disabled={busy || draft.name.trim().length === 0}>
