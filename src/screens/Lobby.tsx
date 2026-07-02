@@ -1,5 +1,5 @@
-// F-02/F-03 대기(로비) 화면 — 방 목록 조회·입장, 방 만들기, 혼자 바로 하기, 도감·마켓 패널
-import { useCallback, useEffect, useState } from "react";
+// F-02/F-03 대기(로비) 화면 — 방 목록 조회·입장, 방 만들기, 혼자 바로 하기, 프로필/통계·마켓 사이드바
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { CardPool, MarketSnapshot } from "../../shared/cards.ts";
 import { DIFFICULTIES } from "../../shared/board.ts";
 import {
@@ -12,10 +12,12 @@ import {
   type RoomSummary,
 } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
-import { diffLabel, errText, gameLabel, modeLabel, stateLabel } from "../labels.ts";
+import { diffLabel, errText, gameLabel, modeLabel } from "../labels.ts";
 
 interface Props {
   nickname: string;
+  /** 도감 달성률·레벨 조회에 사용 (/api/dex/:playerId) */
+  playerId: string;
   pool: CardPool | null;
   market: MarketSnapshot | null;
   /** 방 입장·생성 성공 → 방(대기실) 화면으로 */
@@ -38,6 +40,9 @@ interface DraftConfig {
 }
 
 const DRAFT_KEY = "rsk:lastRoomConfig";
+// 결과 화면에서 증가시키는 로컬 통계 카운터 (없으면 0)
+const STAT_PLAYS_KEY = "rsk:stats:plays";
+const STAT_WINS_KEY = "rsk:stats:wins";
 
 function loadDraft(nickname: string): DraftConfig {
   const base: DraftConfig = {
@@ -58,7 +63,19 @@ function loadDraft(nickname: string): DraftConfig {
   return base;
 }
 
-export default function Lobby({ nickname, pool, market, onEnterRoom, onSoloRoom, onDex, flash }: Props) {
+function loadCounter(key: string): number {
+  try {
+    const n = Number(localStorage.getItem(key));
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// mapMode 키가 .tag 변형 클래스명과 1:1 대응 (normal/rolling/up/shanghai/victory)
+const modeTagClass = (m: MapMode): string => m;
+
+export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onDex, flash }: Props) {
   const [rooms, setRooms] = useState<RoomSummary[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [draft, setDraft] = useState<DraftConfig>(() => loadDraft(nickname));
@@ -66,6 +83,12 @@ export default function Lobby({ nickname, pool, market, onEnterRoom, onSoloRoom,
   const [joinPwd, setJoinPwd] = useState("");
   const [joinErr, setJoinErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // 사이드바 통계: 총 플레이·1위 횟수는 로컬 카운터, 도감%·레벨은 서버 실데이터
+  const [totalPlays] = useState(() => loadCounter(STAT_PLAYS_KEY));
+  const [wins] = useState(() => loadCounter(STAT_WINS_KEY));
+  const [dexPct, setDexPct] = useState<number | null>(null);
+  const [level, setLevel] = useState(1);
 
   // ── 방 목록: 주기 갱신(4초) + 수동 새로고침 ─────────────────
   const refresh = useCallback(() => {
@@ -86,6 +109,31 @@ export default function Lobby({ nickname, pool, market, onEnterRoom, onSoloRoom,
       window.clearInterval(id);
     };
   }, [refresh]);
+
+  // ── 도감 달성률 (실데이터) + 간이 레벨 ─────────────────────────
+  useEffect(() => {
+    if (!playerId) return;
+    let alive = true;
+    fetch(`/api/dex/${playerId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.progress) return;
+        const p = d.progress as {
+          pokemon: { registered: number; total: number };
+          "one-piece": { registered: number; total: number };
+        };
+        const reg = p.pokemon.registered + p["one-piece"].registered;
+        const total = p.pokemon.total + p["one-piece"].total;
+        setDexPct(total > 0 ? Math.round((reg / total) * 100) : 0);
+        setLevel(Math.max(1, Math.floor(reg / 5) + 1)); // 도감 등록 5종당 +1
+      })
+      .catch(() => {
+        /* 조회 실패 시 "—" 유지 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [playerId]);
 
   // ── 입장 ─────────────────────────────────────────────────────
   function join(roomId: string, password?: string) {
@@ -189,94 +237,174 @@ export default function Lobby({ nickname, pool, market, onEnterRoom, onSoloRoom,
 
   const canJoin = (rm: RoomSummary) => rm.state === "waiting" && rm.playerCount < rm.maxPlayers;
 
+  // 방 테이블 열 정렬 (헤더·각 행 공용 그리드)
+  const rowGrid: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr) 120px 150px 96px",
+    gap: 12,
+    alignItems: "center",
+  };
+
   return (
     <>
-      <section className="lobby-top">
-        <div className="lobby-hello">
-          <b>{nickname}</b>님, 환영합니다 — 방에 들어가거나 새 방을 만들어 보세요.
-        </div>
-        <div className="lobby-actions">
-          <button className="btn primary" onClick={() => setCreateOpen(true)}>＋ 방 만들기</button>
-          <button className="btn" onClick={soloPlay} disabled={busy}>⚡ 혼자 바로 하기</button>
-          <button className="ghost" onClick={onDex}>📖 카드 도감</button>
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="panel-head">
-          <h2>
-            방 목록{" "}
-            <span className="muted">{rooms ? `(${rooms.length})` : ""}</span>
-          </h2>
-          <button className="ghost" onClick={refresh}>🔄 새로고침</button>
-        </div>
-        {rooms === null && <p className="muted">방 목록을 불러오는 중…</p>}
-        {rooms !== null && rooms.length === 0 && (
-          <div className="empty-rooms">
-            아직 열린 방이 없어요. <b>방 만들기</b>로 첫 방을 열거나 <b>혼자 바로 하기</b>로 시작해 보세요.
+      <div className="lobby-2col">
+        {/* ── 좌: 방 목록 ── */}
+        <main>
+          <div className="toolbar">
+            <button className="btn btn-ghost" onClick={refresh}>🔄 새로고침</button>
+            <button className="btn btn-accent" onClick={() => setCreateOpen(true)}>＋ 방 만들기</button>
+            <button className="btn btn-dark" onClick={soloPlay} disabled={busy}>⚡ 바로 시작</button>
           </div>
-        )}
-        {rooms !== null && rooms.length > 0 && (
-          <div className="room-list">
-            {rooms.map((rm) => (
-              <div key={rm.roomId} className="room-item">
-                <div className="room-title">
-                  <span className="room-name">
-                    {rm.hasPassword && <span title="비밀번호 방">🔒 </span>}
-                    {rm.name}
-                  </span>
-                  <span className={`state-badge ${rm.state === "waiting" ? "waiting" : "playing"}`}>
-                    {stateLabel(rm.state)}
-                  </span>
-                </div>
-                <div className="room-sub muted">
-                  방장 {rm.hostNickname} · 인원 {rm.playerCount}/{rm.maxPlayers}
-                </div>
-                <div className="room-tags">
-                  <span className="tag">{gameLabel(rm.game)}</span>
-                  <span className="tag">{modeLabel(rm.mapMode)}</span>
-                  <span className="tag">{diffLabel(rm.difficulty)}</span>
-                </div>
-                <button
-                  className="btn primary room-join"
-                  disabled={!canJoin(rm) || busy}
-                  onClick={() => onJoinClick(rm)}
+
+          {/* 테이블 헤더 */}
+          <div
+            className="section-label"
+            style={{ ...rowGrid, borderBottom: "1px solid var(--border)", paddingBottom: 10, margin: 0 }}
+          >
+            <span>방 제목</span>
+            <span>맵</span>
+            <span>인원</span>
+            <span>방장</span>
+            <span />
+          </div>
+
+          {rooms === null && <p className="muted" style={{ padding: "16px 2px" }}>방 목록을 불러오는 중…</p>}
+          {rooms !== null && rooms.length === 0 && (
+            <p className="muted" style={{ padding: "16px 2px" }}>
+              아직 열린 방이 없어요. <b>방 만들기</b>로 첫 방을 열거나 <b>바로 시작</b>으로 시작해 보세요.
+            </p>
+          )}
+
+          {rooms !== null &&
+            rooms.map((rm) => {
+              const full = rm.playerCount >= rm.maxPlayers;
+              const joinable = canJoin(rm);
+              return (
+                <div
+                  key={rm.roomId}
+                  style={{
+                    ...rowGrid,
+                    padding: "16px 2px",
+                    borderBottom: "1px solid var(--border)",
+                    opacity: joinable ? 1 : 0.55,
+                  }}
                 >
-                  {rm.state !== "waiting" ? "진행중" : rm.playerCount >= rm.maxPlayers ? "정원초과" : "입장"}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+                  {/* 방 제목 */}
+                  <span style={{ fontWeight: 700, minWidth: 0, display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {rm.hasPassword && <span title="비밀번호 방">🔒 </span>}
+                      {rm.name}
+                    </span>
+                    {full && <span className="badge-full">FULL</span>}
+                  </span>
 
-      {market && (
-        <section className="panel">
-          <div className="panel-head">
-            <h2>마켓 · 팩 <span className="muted">(공식 CLI 스냅샷)</span></h2>
-            <a className="ghost" href="https://index.renaissos.com" target="_blank" rel="noreferrer">마켓 구경하기 ↗</a>
-          </div>
-          <div className="packs">
-            {market.packs.map((p) => (
-              <div key={p.slug} className="pack">
-                <strong>{p.name}</strong>
-                <span className="muted">{p.author}</span>
-                {p.priceUsd != null && <span className="price">팩 ${p.priceUsd.toLocaleString()}</span>}
-                {p.featuredCardFmvUsd != null && (
-                  <span className="muted">대표 FMV ${p.featuredCardFmvUsd.toLocaleString()}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+                  {/* 맵: 모드 태그 + 난이도 + IP */}
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                    <span className={`tag ${modeTagClass(rm.mapMode)}`}>[{modeLabel(rm.mapMode)}]</span>
+                    <span className={`badge-diff ${rm.difficulty}`}>{diffLabel(rm.difficulty)}</span>
+                    <span
+                      className={`badge-ip ${rm.game === "pokemon" ? "pokemon" : rm.game === "one-piece" ? "onepiece" : ""}`}
+                    >
+                      {gameLabel(rm.game)}
+                    </span>
+                  </span>
 
-      {pool && (
-        <p className="muted small">
-          카드 풀 {pool.cards.length}종 (포켓몬 {pool.counts.pokemon} · 원피스 {pool.counts["one-piece"]}) —
-          가격·등급은 임의 생성 없이 Renaiss OS Index 실데이터입니다.
-        </p>
-      )}
+                  {/* 인원: 점 + n/max */}
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="dots">
+                      {Array.from({ length: rm.maxPlayers }).map((_, i) => (
+                        <i key={i} className={i < rm.playerCount ? (full ? "full" : "on") : ""} />
+                      ))}
+                    </span>
+                    <span className="muted" style={{ fontSize: 13 }}>
+                      {rm.playerCount}/{rm.maxPlayers}
+                    </span>
+                  </span>
+
+                  {/* 방장 */}
+                  <span className="muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    @{rm.hostNickname}
+                  </span>
+
+                  {/* 액션 */}
+                  <button
+                    className={joinable ? "btn btn-blue" : "btn btn-dark"}
+                    disabled={!joinable || busy}
+                    onClick={() => onJoinClick(rm)}
+                  >
+                    {rm.state !== "waiting" ? "진행중" : full ? "정원초과" : "입장"}
+                  </button>
+                </div>
+              );
+            })}
+        </main>
+
+        {/* ── 우: 사이드바 ── */}
+        <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* 프로필 카드 */}
+          <div>
+            <div className="section-label">내 프로필</div>
+            <div className="panel" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div className="avatar lg">🐵</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+                <span
+                  style={{ fontWeight: 700, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  @{nickname}
+                </span>
+                <span className="chip accent" style={{ alignSelf: "flex-start" }}>Lv.{level}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 통계 */}
+          <div className="stat-grid">
+            <div className="stat">
+              <div className="stat-num">{totalPlays}</div>
+              <div className="stat-label">총 플레이</div>
+            </div>
+            <div className="stat">
+              <div className="stat-num">{wins}</div>
+              <div className="stat-label">1위 횟수</div>
+            </div>
+            <div className="stat wide">
+              <div className="stat-num">{dexPct === null ? "—" : `${dexPct}%`}</div>
+              <div className="stat-label">도감 달성</div>
+            </div>
+          </div>
+
+          {/* RENAISS MARKET */}
+          <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <span
+              className="accent"
+              style={{ color: "var(--accent)", fontSize: 11, fontWeight: 700, letterSpacing: 1 }}
+            >
+              RENAISS MARKET
+            </span>
+            <strong style={{ fontSize: 16, lineHeight: 1.35 }}>진짜 카드를<br />온라인에서 소유하세요</strong>
+            <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+              PSA 등급 카드를 디지털로 소유하고, 원하면 실물로 받을 수 있습니다.
+            </p>
+            <a
+              className="btn btn-accent btn-block"
+              href="https://index.renaissos.com"
+              target="_blank"
+              rel="noreferrer"
+              style={{ textAlign: "center", marginTop: 4 }}
+            >
+              마켓 구경하기 →
+            </a>
+          </div>
+
+          <div className="spacer" style={{ flex: 1 }} />
+
+          {/* 하단 도감·설정 */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn btn-dark btn-block" onClick={onDex}>📖 도감</button>
+            <button className="btn btn-dark btn-block" onClick={() => flash("설정은 준비 중입니다")}>⚙ 설정</button>
+          </div>
+        </aside>
+      </div>
 
       {/* ── 방 만들기 모달 ── */}
       {createOpen && (

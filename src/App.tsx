@@ -121,10 +121,21 @@ export default function App() {
     setScreen("lobby");
   }
 
-  const showHero = screen === "login" || screen === "lobby" || screen === "room" || screen === "dex";
+  const showHero = screen === "login" || screen === "dex";
+  // 로비·대기실·게임·결과는 목업대로 풀블리드 셸(구 히어로 헤더 없음)
+  const wide = screen === "lobby" || screen === "room" || screen === "game" || screen === "result";
 
   return (
-    <div className={screen === "game" ? "app app-wide" : "app"}>
+    <div className={wide ? "app app-wide" : "app"}>
+      {screen === "lobby" && (
+        <header className="app-header">
+          <div className="logo-r">R</div>
+          <div>
+            <div className="brand-title">Slab King</div>
+            <div className="brand-sub">by Renaiss</div>
+          </div>
+        </header>
+      )}
       {showHero && (
         <header className="hero">
           <div className="brand">
@@ -159,6 +170,7 @@ export default function App() {
       {screen === "lobby" && (
         <Lobby
           nickname={nickname}
+          playerId={playerId}
           pool={pool}
           market={market}
           onEnterRoom={(rm) => {
@@ -191,6 +203,7 @@ export default function App() {
           summaries={result.summaries}
           myId={playerId}
           canRetry={room !== null}
+          roomName={room?.name}
           onRetry={() => setScreen(room ? "room" : "lobby")}
           onLobby={leaveRoom}
           flash={flash}

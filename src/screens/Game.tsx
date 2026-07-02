@@ -19,6 +19,7 @@ import {
 import { getSocket } from "../net.ts";
 import { errText, modeLabel } from "../labels.ts";
 import { hasRealPrice } from "../ui.tsx";
+import { findPath } from "../../shared/shisen.ts";
 
 interface Props {
   init: BoardInit;
@@ -42,6 +43,63 @@ export function isFreeState(all: TileState[], t: TileState, mapMode: MapMode): b
   if (t.removed) return false;
   if (mapMode !== "shanghai") return true;
   return !all.some((o) => !o.removed && o.layer === t.layer + 1 && o.r === t.r && o.c === t.c);
+}
+
+/**
+ * 소거가능(연결 가능한 짝) 수 — 클라이언트 그리디 카운트.
+ * shared/shisen.findPath 로 현재 free·미제거 타일 중 서로 연결되는 짝을 세되,
+ * 한 타일은 한 짝에만 쓰이도록 그리디로 소비한다(보드 ≤ ~100 이라 허용).
+ * grid: 패딩 포함 점유 격자(true=타일 있음). 테두리는 false 로 우회 경로 허용.
+ */
+export function countRemovable(
+  all: TileState[],
+  cols: number,
+  rows: number,
+  mapMode: MapMode,
+  keyOf: (t: TileState) => string
+): number {
+  const R = rows + 2;
+  const C = cols + 2;
+  const grid: boolean[][] = Array.from({ length: R }, () => new Array(C).fill(false));
+  for (const t of all) if (!t.removed) grid[t.r][t.c] = true;
+
+  const free = all.filter((t) => !t.removed && isFreeState(all, t, mapMode));
+  const byKey = new Map<string, TileState[]>();
+  for (const t of free) {
+    const k = keyOf(t);
+    const g = byKey.get(k);
+    if (g) g.push(t);
+    else byKey.set(k, [t]);
+  }
+
+  let count = 0;
+  const used = new Set<number>();
+  for (const group of byKey.values()) {
+    if (group.length < 2) continue;
+    for (let i = 0; i < group.length; i++) {
+      if (used.has(group[i].tileId)) continue;
+      for (let j = i + 1; j < group.length; j++) {
+        if (used.has(group[j].tileId)) continue;
+        const a = { r: group[i].r, c: group[i].c };
+        const b = { r: group[j].r, c: group[j].c };
+        if (findPath(grid, a, b)) {
+          used.add(group[i].tileId);
+          used.add(group[j].tileId);
+          count++;
+          break;
+        }
+      }
+    }
+  }
+  return count;
+}
+
+/** 플레이어 아바타 이모지(장식용, playerId 해시로 결정). */
+const AVATAR_SET = ["🐵", "🐲", "🦊", "⭐", "🐱", "🐶", "🐼", "🦁", "🐸", "🐯", "🦄", "🐧"];
+export function avatarFor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_SET[h % AVATAR_SET.length];
 }
 
 function useViewport() {
@@ -124,9 +182,9 @@ export default function Game({ init, room, myId, onLeave }: Props) {
 
   // ── 레이아웃 ────────────────────────────────────────────────
   const vp = useViewport();
-  const opponents = (room?.players ?? []).filter((p) => p.playerId !== myId);
-  const availW = vp.w - 48 - (opponents.length > 0 ? 190 : 0);
-  const availH = vp.h - 180;
+  // 3컬럼 셸: 좌 플레이어(150) + 우 사이드바(168) + 중앙 여백 → 보드 가용 폭 산출
+  const availW = vp.w - 150 - 168 - 72;
+  const availH = vp.h - 120;
   const cellW = Math.round(
     Math.max(42, Math.min(150, Math.min(availW / init.cols, availH / (init.rows * ASPECT))))
   );
@@ -407,60 +465,93 @@ export default function Game({ init, room, myId, onLeave }: Props) {
       }).join(" ")
     : "";
 
+  // 소거가능(연결 가능한 짝) — tiles 변할 때만 재계산
+  const removable = useMemo(
+    () => countRemovable(tiles, init.cols, init.rows, init.mapMode, (t) => cardOf(t).matchKey),
+    [tiles] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // 현재 예상 등수 — 남은 패 적을수록 상위, 동률이면 점수 높을수록 상위
+  const players = room?.players ?? [];
+  const standings = players.map((p) =>
+    p.playerId === myId
+      ? { id: myId, remaining, score }
+      : {
+          id: p.playerId,
+          remaining: progress[p.playerId]?.remaining ?? p.remaining,
+          score: progress[p.playerId]?.score ?? p.score,
+        }
+  );
+  const myStand = standings.find((s) => s.id === myId);
+  const myRank = myStand
+    ? 1 +
+      standings.filter(
+        (o) =>
+          o.id !== myId &&
+          (o.remaining < myStand.remaining ||
+            (o.remaining === myStand.remaining && o.score > myStand.score))
+      ).length
+    : null;
+
+  const centerTitle = room?.name ?? modeLabel(init.mapMode);
+
   return (
-    <div className="game">
-      <div className="hud">
-        <div className="hud-left">
-          <button className="ghost" onClick={onLeave}>← 나가기</button>
-          <span className="hud-mode tag">{modeLabel(init.mapMode)}</span>
-          {init.mapMode === "up" && <span className="tag reserve-tag">남은 줄 {reserveRows}</span>}
-        </div>
-        <div className="stats">
-          <span>남은 카드 <b>{remaining}</b></span>
-          <span>시간 <b>{mm}:{ss}</b></span>
-          <span>점수 <b key={score} className="score-bump">{score.toLocaleString()}</b></span>
-          {combo > 0 && (
-            <span className="combo-box" key={comboKey}>
-              <span className="combo">{combo} 콤보!</span>
-              <span className="combo-bar" style={{ animationDuration: `${COMBO_WINDOW_MS}ms` }} />
-            </span>
-          )}
-        </div>
-        <div className="hud-actions">
-          <button className="item-btn" disabled={items.search <= 0} onClick={() => useSimpleItem("search")}>
-            <span className="key-badge">F1</span>🔍 서치 <span className="qty">{items.search}</span>
-          </button>
-          <button className="item-btn" disabled={items.shuffle <= 0} onClick={() => useSimpleItem("shuffle")}>
-            <span className="key-badge">F2</span>🔀 섞기 <span className="qty">{items.shuffle}</span>
-          </button>
-          <button
-            className={`item-btn ${scissorOn ? "on" : ""}`}
-            disabled={items.scissor <= 0 && !scissorOn}
-            onClick={toggleScissor}
-          >
-            <span className="key-badge">F3</span>✂️ 가위 <span className="qty">{items.scissor}</span>
-          </button>
-        </div>
-      </div>
+    <div className="screen-3col game-3col">
+      {/* ── 좌: 플레이어(상대 미니뷰 통합) ── */}
+      <aside className="side-left game-left">
+        {players.length === 0 && (
+          <div className="slot-player">
+            <div className="avatar">{avatarFor(myId)}</div>
+            <div className="sp-name">나</div>
+          </div>
+        )}
+        {players.map((p) => {
+          const isMe = p.playerId === myId;
+          const pr = progress[p.playerId] ?? { remaining: p.remaining, score: p.score, combo: p.combo };
+          return (
+            <div key={p.playerId} className={`slot-player game-player ${isMe ? "me" : ""}`}>
+              <div className="avatar">{avatarFor(p.playerId)}</div>
+              <div className="sp-name">@{p.nickname}</div>
+              {p.isHost && <span className="chip host game-host-chip">방장</span>}
+              {!isMe && (
+                <div className="gp-mini" title={`남은 ${pr.remaining} · 점수 ${pr.score}`}>
+                  <span>남은 {pr.remaining}</span>
+                  {!p.connected && <span className="pc-off">끊김</span>}
+                  {p.finishedRank === 1 && <span> 🏆</span>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </aside>
 
-      {/* 모드 배너: 콤보 파워 지정 / 가위 대상 지정 */}
-      {power && (
-        <div className="mode-banner power">
-          ⚡ {power.level}콤보!{" "}
-          {power.kind === "pair"
-            ? "카드를 지정하면 짝이 제거됩니다"
-            : "카드를 지정하면 동일 카드 전체가 제거됩니다"}
-          <button className="banner-cancel" onClick={() => setPower(null)}>취소</button>
+      {/* ── 중앙: 제목 + 보드 ── */}
+      <div className="screen-center game-center">
+        <div className="game-center-head">
+          <h2 className="game-title">{centerTitle}</h2>
+          <div className="game-title-tags">
+            <span className={`tag ${init.mapMode}`}>{modeLabel(init.mapMode)}</span>
+            {init.mapMode === "up" && <span className="tag reserve-tag">남은 줄 {reserveRows}</span>}
+          </div>
         </div>
-      )}
-      {scissorOn && !power && (
-        <div className="mode-banner scissor">
-          ✂️ 가위 — 제거할 카드 1장을 선택하세요
-          <button className="banner-cancel" onClick={toggleScissor}>취소</button>
-        </div>
-      )}
 
-      <div className={`game-body ${opponents.length > 0 ? "with-side" : ""}`}>
+        {/* 모드 배너: 콤보 파워 지정 / 가위 대상 지정 */}
+        {power && (
+          <div className="mode-banner power">
+            ⚡ {power.level}콤보!{" "}
+            {power.kind === "pair"
+              ? "카드를 지정하면 짝이 제거됩니다"
+              : "카드를 지정하면 동일 카드 전체가 제거됩니다"}
+            <button className="banner-cancel" onClick={() => setPower(null)}>취소</button>
+          </div>
+        )}
+        {scissorOn && !power && (
+          <div className="mode-banner scissor">
+            ✂️ 가위 — 제거할 카드 1장을 선택하세요
+            <button className="banner-cancel" onClick={toggleScissor}>취소</button>
+          </div>
+        )}
+
         <div className="board-wrap">
           <div className="gboard" style={{ width: boardW, height: boardH }}>
             {/* 마스크 유효 칸(빈 slot) 표시 */}
@@ -544,34 +635,74 @@ export default function Game({ init, room, myId, onLeave }: Props) {
             )}
           </div>
         </div>
-
-        {/* 상대 진행 미니뷰 (개인전 동일 보드 진행도) */}
-        {opponents.length > 0 && (
-          <aside className="mini-players">
-            <h4 className="muted">상대 진행</h4>
-            {opponents.map((p) => {
-              const pr = progress[p.playerId] ?? { remaining: p.remaining, score: p.score, combo: p.combo };
-              return (
-                <div key={p.playerId} className="mini-player">
-                  <div className="mp-name">
-                    {p.isHost && "👑 "}
-                    {p.nickname}
-                    {!p.connected && <span className="mp-off"> (끊김)</span>}
-                    {p.finishedRank === 1 && " 🏆"}
-                  </div>
-                  <div className="mp-row">
-                    <span>남은</span><b>{pr.remaining}</b>
-                    <span>점수</span><b>{pr.score.toLocaleString()}</b>
-                  </div>
-                  <div className="mp-combo" title={`콤보 ${pr.combo}`}>
-                    <span style={{ width: `${Math.min(100, pr.combo * 10)}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </aside>
-        )}
       </div>
+
+      {/* ── 우: 사이드바(등수/패/소거/아이템/점수·시간) ── */}
+      <aside className="side-right game-right">
+        <div className="rank-box">
+          <div className="rank-label">현재 등수</div>
+          <div className="rank-value">{myRank !== null ? `${myRank}위` : "—"}</div>
+        </div>
+
+        <div className="panel side-metrics">
+          <div className="side-stat">
+            <span className="ss-label">남은 패</span>
+            <span className="ss-val">{remaining}</span>
+          </div>
+          <div className="side-stat">
+            <span className="ss-label">소거가능</span>
+            <span className="ss-val green">{removable}</span>
+          </div>
+        </div>
+
+        <div className="game-items">
+          <button
+            className="game-item"
+            disabled={items.search <= 0}
+            onClick={() => useSimpleItem("search")}
+          >
+            <span className="gi-top"><span className="key-cap">F1</span> 🔍 서치</span>
+            <span className="gi-sub">남은 횟수 {items.search}</span>
+          </button>
+          <button
+            className="game-item"
+            disabled={items.shuffle <= 0}
+            onClick={() => useSimpleItem("shuffle")}
+          >
+            <span className="gi-top"><span className="key-cap">F2</span> 🔀 패 섞기</span>
+            <span className="gi-sub">남은 횟수 {items.shuffle}</span>
+          </button>
+          <button
+            className={`game-item ${scissorOn ? "on" : ""}`}
+            disabled={items.scissor <= 0 && !scissorOn}
+            onClick={toggleScissor}
+          >
+            <span className="gi-top"><span className="key-cap">F3</span> ✂️ 가위</span>
+            <span className="gi-sub">남은 횟수 {items.scissor}</span>
+          </button>
+        </div>
+
+        <div className="panel side-metrics side-score">
+          <div className="side-stat">
+            <span className="ss-label">점수</span>
+            <span className="ss-val" key={score} ><span className="score-bump">{score.toLocaleString()}</span></span>
+          </div>
+          <div className="side-stat">
+            <span className="ss-label">시간</span>
+            <span className="ss-val">{mm}:{ss}</span>
+          </div>
+          {combo > 0 && (
+            <div className="side-combo" key={comboKey}>
+              <span className="combo">{combo} 콤보!</span>
+              <span className="combo-bar" style={{ animationDuration: `${COMBO_WINDOW_MS}ms` }} />
+            </div>
+          )}
+        </div>
+
+        <div className="spacer" />
+        <button className="btn btn-dark btn-block" onClick={() => flash("옵션은 준비 중입니다")}>옵션</button>
+        <button className="btn btn-danger btn-block" onClick={onLeave}>나가기</button>
+      </aside>
 
       {/* 1위 확정 → 10초 유예 카운트다운 (플레이는 계속 가능) */}
       {finishing && (

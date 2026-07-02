@@ -1,14 +1,10 @@
-// 방(대기실) 화면 — 참가자 목록(방장 👑·나), 방장 전용 설정 변경(room:config)·게임 시작
-import { useState } from "react";
-import { DIFFICULTIES } from "../../shared/board.ts";
-import {
-  MAP_MODES,
-  type GameSel,
-  type RoomConfig,
-  type RoomDetail,
-} from "../../shared/protocol.ts";
+// 화면 2 — 대기실(방). 3컬럼: 좌 플레이어 슬롯 / 중앙 방제목·맵 프리뷰·시작 / 우 사이드바.
+// 맵 선택은 Room 내부 오버레이(MapSelect)로 처리. 기존 room props/room:config/game:start/leave 계약 보존.
+import { useState, type CSSProperties } from "react";
+import type { RoomConfig, RoomDetail } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
-import { errText, gameLabel } from "../labels.ts";
+import { errText, modeLabel, stateLabel } from "../labels.ts";
+import MapSelect, { MAP_PRESETS, mapDiffLabel, type MapPreset } from "./MapSelect.tsx";
 
 interface Props {
   room: RoomDetail;
@@ -17,8 +13,20 @@ interface Props {
   flash: (msg: string) => void;
 }
 
+// 좌측 슬롯 아바타(장식용 이모지 — 실제 아바타 데이터 없음)
+const AVATARS = ["🐵", "🐉", "🦊", "⭐", "🐱", "🐼"];
+
 export default function Room({ room, myId, onLeave, flash }: Props) {
   const [busy, setBusy] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  // 선택된 프리셋(로컬 표시용). 초기값 = 현재 방 설정과 일치하는 프리셋(없으면 null).
+  const [picked, setPicked] = useState<MapPreset | null>(
+    () =>
+      MAP_PRESETS.find(
+        (p) => p.mapMode === room.mapMode && p.difficulty === room.difficulty && p.game === room.game
+      ) ?? null
+  );
+
   const me = room.players.find((p) => p.playerId === myId);
   const isHost = !!me?.isHost;
 
@@ -40,104 +48,162 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
     });
   }
 
+  // 맵 선택 완료 → 호스트가 room:config emit(기존 계약) + 로컬 프리뷰 반영.
+  function onMapConfirm(p: MapPreset) {
+    setPicked(p);
+    setMapOpen(false);
+    setCfg({ game: p.game, mapMode: p.mapMode, difficulty: p.difficulty });
+  }
+
+  // 프리뷰: 선택 프리셋 or 현재 방 설정 기반(날조 없이 실제 모드/난이도 표기).
+  const prevEmoji = picked?.emoji ?? "🗺️";
+  const prevName = picked?.name ?? `${modeLabel(room.mapMode)} 맵`;
+  const prevDiff = picked?.difficulty ?? room.difficulty;
+
+  const bigBtn: CSSProperties = { minWidth: 150, padding: "14px 20px", fontSize: 15 };
+
   return (
-    <section className="room-screen">
-      <div className="panel-head">
-        <h2>
-          {room.visibility === "private" && <span title="비공개 방">🔒 </span>}
-          {room.name} <span className="muted">({room.playerCount}/{room.maxPlayers}명)</span>
-        </h2>
-        <button className="ghost" onClick={onLeave}>← 나가기</button>
-      </div>
+    <section
+      className="screen-3col"
+      style={mapOpen ? { gridTemplateColumns: "1fr" } : undefined}
+    >
+      {/* ── 좌: 플레이어 슬롯 (맵 선택 중엔 숨김 — 맵선택 자체 필터가 좌측) ── */}
+      {!mapOpen && (
+      <aside className="side-left">
+        {Array.from({ length: room.maxPlayers }, (_, i) => {
+          const p = room.players[i];
+          if (!p) {
+            return (
+              <div key={`empty-${i}`} className="slot-player empty">
+                <div className="avatar lg">＋</div>
+                <span className="sp-name">빈 자리</span>
+              </div>
+            );
+          }
+          return (
+            <div key={p.playerId} className="slot-player">
+              <div className="avatar lg">{AVATARS[i % AVATARS.length]}</div>
+              <span className="sp-name">@{p.nickname}</span>
+              {p.isHost && <span className="chip host">방장</span>}
+              {!p.isHost && p.playerId === myId && <span className="chip green">나</span>}
+              {!p.connected && <span className="pc-off">연결 끊김</span>}
+            </div>
+          );
+        })}
+      </aside>
+      )}
 
-      <div className="room-cols">
-        <div className="room-config setup">
-          <div className="field">
-            <label>카드</label>
-            <div className="seg">
-              {(["pokemon", "one-piece", "mixed"] as GameSel[]).map((g) => (
-                <button
-                  key={g}
-                  className={room.game === g ? "on" : ""}
-                  disabled={!isHost}
-                  onClick={() => setCfg({ game: g })}
-                >
-                  {gameLabel(g)}
-                </button>
-              ))}
+      {/* ── 중앙 ── */}
+      <main className="screen-center" style={mapOpen ? { padding: 0 } : undefined}>
+        {mapOpen ? (
+          <MapSelect room={room} onCancel={() => setMapOpen(false)} onConfirm={onMapConfirm} />
+        ) : (
+          <>
+            {/* 상단 방제목 + 상태 */}
+            <div style={{ alignSelf: "stretch", textAlign: "center", paddingBottom: 8 }}>
+              <span style={{ fontWeight: 700 }}>{room.name}</span>{" "}
+              <span className="chip accent">
+                {room.state === "waiting" ? "대기 중" : stateLabel(room.state)}
+              </span>
             </div>
-          </div>
-          <div className="field field-top">
-            <label>맵 모드</label>
-            <div className="mode-list">
-              {MAP_MODES.map((m) => (
-                <button
-                  key={m.key}
-                  className={`mode-opt ${room.mapMode === m.key ? "on" : ""}`}
-                  disabled={!isHost}
-                  onClick={() => setCfg({ mapMode: m.key })}
-                >
-                  <b>{m.label}</b>
-                  <span>{m.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="field">
-            <label>난이도</label>
-            <div className="seg">
-              {DIFFICULTIES.map((d) => (
-                <button
-                  key={d.key}
-                  className={room.difficulty === d.key ? "on" : ""}
-                  disabled={!isHost}
-                  onClick={() => setCfg({ difficulty: d.key })}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="start-row">
-            {isHost ? (
-              <button className="btn primary big" onClick={start} disabled={busy}>
-                ▶ 게임 시작
-              </button>
-            ) : (
-              <p className="muted">방장이 게임을 시작하면 자동으로 입장합니다. (별도 준비 절차 없음)</p>
-            )}
-          </div>
-        </div>
 
-        <div className="room-players">
-          <h3 className="muted">참가자</h3>
-          <div className="player-list">
-            {Array.from({ length: room.maxPlayers }, (_, i) => {
-              const p = room.players[i];
-              if (!p) {
-                return (
-                  <div key={`empty-${i}`} className="player-chip empty">
-                    빈 자리
-                  </div>
-                );
-              }
-              return (
-                <div key={p.playerId} className={`player-chip ${p.playerId === myId ? "me" : ""}`}>
-                  <span className="pc-name">
-                    {p.isHost && <span title="방장">👑 </span>}
-                    {p.nickname}
-                    {p.playerId === myId && <span className="pc-me"> (나)</span>}
-                  </span>
-                  {!p.connected && <span className="pc-off">연결 끊김</span>}
+            {/* 맵 프리뷰 + 액션 (세로 중앙) */}
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 22,
+              }}
+            >
+              <div
+                style={{
+                  width: "min(440px, 92%)",
+                  background: "var(--panel)",
+                  border: "2px solid var(--accent)",
+                  borderRadius: "var(--r)",
+                  padding: 20,
+                  boxShadow: "0 0 0 3px rgba(245,158,11,.15)",
+                }}
+              >
+                <div
+                  style={{
+                    background: "var(--panel-2)",
+                    borderRadius: 10,
+                    padding: "44px 0",
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 96,
+                    lineHeight: 1,
+                  }}
+                >
+                  {prevEmoji}
                 </div>
-              );
-            })}
-          </div>
-          <p className="muted small">
-            "실제 Renaiss 카드로 즐기는 입문 게임" — 같은 카드 두 장을 꺾임 2번 이내로 이어 없애세요.
-          </p>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
+                  <span className={`badge-diff ${prevDiff}`}>{mapDiffLabel(prevDiff)}</span>
+                  <span style={{ fontWeight: 700, fontSize: 18 }}>{prevName}</span>
+                </div>
+              </div>
+
+              {isHost ? (
+                <div style={{ display: "flex", gap: 14 }}>
+                  <button className="btn btn-dark" style={bigBtn} onClick={() => setMapOpen(true)}>
+                    맵 선택
+                  </button>
+                  <button className="btn btn-green" style={bigBtn} onClick={start} disabled={busy}>
+                    게임 시작
+                  </button>
+                </div>
+              ) : (
+                <div className="chip">방장이 게임을 시작하길 기다리는 중…</div>
+              )}
+
+              <p className="muted" style={{ fontSize: 12.5, textAlign: "center", margin: 0 }}>
+                방장이 맵을 선택하고 게임 시작 버튼을 누르면 게임이 시작됩니다.
+              </p>
+            </div>
+          </>
+        )}
+      </main>
+
+      {/* ── 우: 사이드바 (대기 중이라 값은 —, 맵 선택 중엔 숨김) ── */}
+      {!mapOpen && (
+      <aside className="side-right">
+        <div style={{ textAlign: "center", padding: "6px 0 12px", borderBottom: "1px solid var(--border)" }}>
+          <div className="ss-label">현재 등수</div>
+          <div className="ss-val" style={{ fontSize: 26 }}>—</div>
         </div>
-      </div>
+        <div className="side-stat">
+          <span className="ss-label">남은 패</span>
+          <span className="ss-val">—</span>
+        </div>
+        <div className="side-stat">
+          <span className="ss-label">소거가능</span>
+          <span className="ss-val">—</span>
+        </div>
+
+        <div className="item-row disabled">
+          <span className="key-cap">F1</span> 🔍 서치
+        </div>
+        <div className="item-row disabled">
+          <span className="key-cap">F2</span> 🎴 섞기
+        </div>
+        <div className="item-row disabled">
+          <span className="key-cap">F3</span> ✂️ 가위
+        </div>
+
+        <div className="spacer" />
+
+        <button className="btn btn-dark btn-block" onClick={() => flash("옵션은 준비 중입니다")}>
+          옵션
+        </button>
+        <button className="btn btn-danger btn-block" onClick={onLeave}>
+          나가기
+        </button>
+      </aside>
+      )}
     </section>
   );
 }
