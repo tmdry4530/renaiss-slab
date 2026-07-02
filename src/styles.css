@@ -340,6 +340,11 @@ h2 { font-size: 16px; margin: 0; }
   min-width: 18px; height: 18px; border-radius: 9px; display: inline-grid; place-items: center; padding: 0 4px;
 }
 .item-btn:disabled .qty { background: var(--muted); }
+.item-btn .key-badge {
+  background: rgba(255,255,255,0.07); color: var(--muted); border: 1px solid var(--line);
+  font-size: 9.5px; font-weight: 800; line-height: 1; padding: 3px 4px; border-radius: 5px;
+  letter-spacing: 0.3px;
+}
 
 .combo-box { display: inline-flex; flex-direction: column; gap: 3px; min-width: 76px; }
 .combo-bar {
@@ -380,8 +385,27 @@ h2 { font-size: 16px; margin: 0; }
 .gtile.covered:hover { transform: none; box-shadow: none; border-color: var(--bg); }
 .vanish.layer1 { transform: translate(-6px, -9px); }
 
-/* 승리 카드: 금테 + 👑 뱃지 */
-.gtile.victory { border-color: var(--pokemon); box-shadow: 0 0 12px rgba(255,203,5,0.55), inset 0 0 0 2px rgba(255,203,5,0.7); }
+/* 승리 카드: 금색 그라데이션 배경 + 큰 "승" + glow + 👑 뱃지 */
+.gtile.victory {
+  border-color: #ffd24a;
+  background: linear-gradient(145deg, #fce38a 0%, #f6c313 45%, #d99400 100%);
+  box-shadow: 0 0 16px rgba(255,203,5,0.75), inset 0 0 0 2px rgba(255,255,255,0.4);
+  animation: victoryGlow 1.4s ease-in-out infinite alternate;
+}
+.gtile.victory:hover:not(:disabled) { border-color: #fff0b0; }
+@keyframes victoryGlow {
+  from { box-shadow: 0 0 12px rgba(255,203,5,0.55), inset 0 0 0 2px rgba(255,255,255,0.35); }
+  to   { box-shadow: 0 0 22px rgba(255,203,5,0.95), inset 0 0 0 2px rgba(255,255,255,0.55); }
+}
+.victory-face {
+  display: grid; place-items: center; width: 100%; height: 100%;
+  font-weight: 900; line-height: 1; color: #6a3d00;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.55), 0 2px 4px rgba(120,70,0,0.4);
+}
+.docent-face {
+  width: 46px; height: 46px; font-size: 26px; border-radius: 8px;
+  background: linear-gradient(145deg, #fce38a, #f6c313); flex: 0 0 auto;
+}
 .crown {
   position: absolute; top: -9px; right: -7px; font-size: 15px; z-index: 5;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,0.7));

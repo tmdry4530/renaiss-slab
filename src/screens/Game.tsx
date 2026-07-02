@@ -77,7 +77,6 @@ export default function Game({ init, room, myId, onLeave }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [items, setItems] = useState<Record<ItemType, number>>({ ...ITEM_QUOTA });
   const [scissorOn, setScissorOn] = useState(false);
-  const [scissorFirst, setScissorFirst] = useState<number | null>(null);
   const [power, setPower] = useState<ComboPower | null>(null); // 콤보 파워 지정 대기
   const [finishing, setFinishing] = useState<{ nickname: string; sec: number } | null>(null);
   const [progress, setProgress] = useState<Record<string, Progress>>({});
@@ -276,7 +275,6 @@ export default function Game({ init, room, myId, onLeave }: Props) {
       if (e.key !== "Escape") return;
       setPower(null);
       setScissorOn(false);
-      setScissorFirst(null);
       setSel(null);
     };
     window.addEventListener("keydown", onKey);
@@ -296,29 +294,25 @@ export default function Game({ init, room, myId, onLeave }: Props) {
       return;
     }
 
-    // 가위 모드: 같은 카드 두 장 지정 → item:use
+    // 가위 모드: 카드 1장 클릭 → 같은 matchKey 의 다른 free·미제거 타일을 자동으로 찾아 짝 제거
     if (scissorOn) {
-      if (scissorFirst === null) {
-        setScissorFirst(t.tileId);
+      const other = tiles.find(
+        (x) =>
+          x.tileId !== t.tileId &&
+          !x.removed &&
+          isFreeState(tiles, x, init.mapMode) &&
+          cardOf(x).matchKey === cardOf(t).matchKey
+      );
+      if (!other) {
+        flash("제거할 짝을 찾을 수 없어요"); // 모드 유지 — 다른 카드 클릭 가능
         return;
       }
-      if (scissorFirst === t.tileId) {
-        setScissorFirst(null);
-        return;
-      }
-      const first = tiles.find((x) => x.tileId === scissorFirst);
-      if (!first || cardOf(first).matchKey !== cardOf(t).matchKey) {
-        flash("같은 카드 두 장을 선택하세요");
-        setScissorFirst(t.tileId);
-        return;
-      }
-      const pair: [number, number] = [scissorFirst, t.tileId];
+      const pair: [number, number] = [t.tileId, other.tileId];
       getSocket().emit("item:use", { type: "scissor", tiles: pair }, (r) => {
         if (r.ok) setItems((it) => ({ ...it, scissor: it.scissor - 1 }));
         else flash(errText(r.error));
       });
       setScissorOn(false);
-      setScissorFirst(null);
       return;
     }
 
@@ -369,14 +363,36 @@ export default function Game({ init, room, myId, onLeave }: Props) {
   function toggleScissor() {
     if (scissorOn) {
       setScissorOn(false);
-      setScissorFirst(null);
       return;
     }
-    if (items.scissor <= 0) return;
+    if (items.scissor <= 0) {
+      flash("가위를 모두 사용했어요");
+      return;
+    }
     setSel(null);
     setPower(null);
     setScissorOn(true);
   }
+
+  // ── 아이템 단축키 (F1 서치 · F2 섞기 · F3 가위, 별칭 5/6/7·1/2/3) ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      let action: "search" | "shuffle" | "scissor" | null = null;
+      switch (e.key) {
+        case "F1": case "5": case "1": action = "search"; break;
+        case "F2": case "6": case "2": action = "shuffle"; break;
+        case "F3": case "7": case "3": action = "scissor"; break;
+      }
+      if (!action) return;
+      e.preventDefault(); // F1 브라우저 도움말 등 기본 동작 차단
+      if (action === "scissor") toggleScissor();
+      else useSimpleItem(action);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [items, scissorOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 렌더 ────────────────────────────────────────────────────
   const live = tiles.filter((t) => !t.removed);
@@ -397,7 +413,7 @@ export default function Game({ init, room, myId, onLeave }: Props) {
         <div className="hud-left">
           <button className="ghost" onClick={onLeave}>← 나가기</button>
           <span className="hud-mode tag">{modeLabel(init.mapMode)}</span>
-          {init.mapMode === "up" && <span className="tag reserve-tag">예비 줄 {reserveRows}</span>}
+          {init.mapMode === "up" && <span className="tag reserve-tag">남은 줄 {reserveRows}</span>}
         </div>
         <div className="stats">
           <span>남은 카드 <b>{remaining}</b></span>
@@ -412,17 +428,17 @@ export default function Game({ init, room, myId, onLeave }: Props) {
         </div>
         <div className="hud-actions">
           <button className="item-btn" disabled={items.search <= 0} onClick={() => useSimpleItem("search")}>
-            🔍 서치 <span className="qty">{items.search}</span>
+            <span className="key-badge">F1</span>🔍 서치 <span className="qty">{items.search}</span>
           </button>
           <button className="item-btn" disabled={items.shuffle <= 0} onClick={() => useSimpleItem("shuffle")}>
-            🔀 섞기 <span className="qty">{items.shuffle}</span>
+            <span className="key-badge">F2</span>🔀 섞기 <span className="qty">{items.shuffle}</span>
           </button>
           <button
             className={`item-btn ${scissorOn ? "on" : ""}`}
             disabled={items.scissor <= 0 && !scissorOn}
             onClick={toggleScissor}
           >
-            ✂️ 가위 <span className="qty">{items.scissor}</span>
+            <span className="key-badge">F3</span>✂️ 가위 <span className="qty">{items.scissor}</span>
           </button>
         </div>
       </div>
@@ -439,7 +455,7 @@ export default function Game({ init, room, myId, onLeave }: Props) {
       )}
       {scissorOn && !power && (
         <div className="mode-banner scissor">
-          ✂️ 가위 — 같은 카드 두 장을 차례로 선택하세요
+          ✂️ 가위 — 제거할 카드 1장을 선택하세요
           <button className="banner-cancel" onClick={toggleScissor}>취소</button>
         </div>
       )}
@@ -461,8 +477,7 @@ export default function Game({ init, room, myId, onLeave }: Props) {
               const free = isFreeState(tiles, t, init.mapMode);
               const isSel =
                 sel === t.tileId ||
-                (pending !== null && (pending[0] === t.tileId || pending[1] === t.tileId)) ||
-                scissorFirst === t.tileId;
+                (pending !== null && (pending[0] === t.tileId || pending[1] === t.tileId));
               const isHl = highlight !== null && (highlight[0] === t.tileId || highlight[1] === t.tileId);
               return (
                 <button
@@ -480,9 +495,13 @@ export default function Game({ init, room, myId, onLeave }: Props) {
                   style={{ left: (t.c - 1) * cellW, top: (t.r - 1) * cellH, width: cellW, height: cellH }}
                   disabled={!free}
                   onClick={() => onTile(t)}
-                  title={`${card.name} · ${card.gradeLabel}${t.victory ? " · 승리 카드" : ""}`}
+                  title={t.victory ? "승리 카드" : `${card.name} · ${card.gradeLabel}`}
                 >
-                  <img src={card.imageUrlThumb || card.imageUrl} alt={card.name} draggable={false} />
+                  {t.victory ? (
+                    <span className="victory-face" style={{ fontSize: Math.round(cellH * 0.5) }}>승</span>
+                  ) : (
+                    <img src={card.imageUrlThumb || card.imageUrl} alt={card.name} draggable={false} />
+                  )}
                   {t.victory && <span className="crown">👑</span>}
                 </button>
               );
@@ -495,7 +514,11 @@ export default function Game({ init, room, myId, onLeave }: Props) {
                 className={`vanish ${v.layer > 0 ? "layer1" : ""}`}
                 style={{ left: (v.c - 1) * cellW, top: (v.r - 1) * cellH, width: cellW, height: cellH }}
               >
-                <img src={v.card.imageUrlThumb || v.card.imageUrl} alt="" />
+                {v.card.imageUrlThumb || v.card.imageUrl ? (
+                  <img src={v.card.imageUrlThumb || v.card.imageUrl} alt="" />
+                ) : (
+                  <span className="victory-face" style={{ fontSize: Math.round(cellH * 0.5) }}>승</span>
+                )}
               </div>
             ))}
 
@@ -568,7 +591,11 @@ export default function Game({ init, room, myId, onLeave }: Props) {
       {/* 카드 제거 도슨트 토스트 (1단계 짧은 정보 — 상세는 도감에서) */}
       {toast && (
         <div className="docent">
-          <img src={toast.imageUrlThumb || toast.imageUrl} alt="" />
+          {toast.imageUrlThumb || toast.imageUrl ? (
+            <img src={toast.imageUrlThumb || toast.imageUrl} alt="" />
+          ) : (
+            <span className="victory-face docent-face">승</span>
+          )}
           <div>
             <div className="d-name">{toast.name}</div>
             <div className="d-sub">

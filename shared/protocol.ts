@@ -13,12 +13,13 @@ export type ItemType = "search" | "shuffle" | "scissor";
 export const MAP_MODES: { key: MapMode; label: string; desc: string }[] = [
   { key: "normal", label: "일반", desc: "기본 매칭 규칙" },
   { key: "rolling", label: "롤링", desc: "3초마다 카드가 우측으로 이동" },
-  { key: "up", label: "UP", desc: "줄이 비면 최하단에서 한 줄 상승" },
+  { key: "up", label: "UP", desc: "일정 시간마다 최하단에서 한 줄씩 위로 상승" },
   { key: "victory", label: "승리", desc: "승리 카드 짝을 먼저 맞추면 즉시 1위" },
   { key: "shanghai", label: "상하이", desc: "겹층 — 위층을 걷어야 아래층 선택 가능" },
 ];
 
 export const ROLLING_INTERVAL_MS = 3000; // PRD §4.3
+export const UP_RISE_INTERVAL_MS = 4500; // UP 모드: 타이머마다 한 줄씩 위로 상승
 export const COMBO_WINDOW_MS = 2000; // PRD §4.4 콤보 지속시간 2초
 export const FINISH_GRACE_MS = 10000; // 1위 확정 후 10초 유예
 export const DEX_REGISTER_COUNT = 10; // 동일 카드 누적 10회 제거 시 도감 등록

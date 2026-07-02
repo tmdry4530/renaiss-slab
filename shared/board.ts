@@ -3,7 +3,7 @@
 // 보드 생성(시드 RNG)·마스크(비사각형 맵 모양)·모드별 규칙(상하이/승리/UP/롤링)·
 // 힌트/교착감지·재셔플·직렬화(TileState). shisen.findPath 위에 구축.
 // ─────────────────────────────────────────────────────────────
-import type { GameCard } from "./cards.ts";
+import { victoryCard, type GameCard } from "./cards.ts";
 import type { DifficultyKey, MapMode, TileState } from "./protocol.ts";
 import { findPath, type Point } from "./shisen.ts";
 
@@ -73,21 +73,28 @@ export function toTileStates(board: Board): TileState[] {
 
 // ── 난이도 ───────────────────────────────────────────────────
 // F-05: 난이도별 카드 종류 수 차등 — easy 는 종류가 적어 짝이 많이 중복(쉬움),
-// hard 는 종류가 많아 같은 카드 찾기가 어려움. reserveRows 는 UP 모드 예비 줄 수.
+// hard 는 종류가 많아 같은 카드 찾기가 어려움. reserveRows 는 UP 모드 앞으로 상승할 줄 수(= "남은 줄").
 export interface Difficulty {
   key: DifficultyKey;
   label: string;
   rows: number;
   cols: number;
   cardKinds: number; // 카드 종류 수 상한 (풀 크기로 자동 캡)
-  reserveRows: number; // UP 모드 예비 줄 수 (2~3)
+  reserveRows: number; // UP 모드 예비(상승) 줄 수 = 남은 줄 (easy6/normal8/hard10)
 }
 
 export const DIFFICULTIES: Difficulty[] = [
-  { key: "easy", label: "쉬움 (6×4)", rows: 4, cols: 6, cardKinds: 6, reserveRows: 2 },
-  { key: "normal", label: "보통 (8×6)", rows: 6, cols: 8, cardKinds: 16, reserveRows: 2 },
-  { key: "hard", label: "어려움 (10×8)", rows: 8, cols: 10, cardKinds: 30, reserveRows: 3 },
+  { key: "easy", label: "쉬움 (6×4)", rows: 4, cols: 6, cardKinds: 6, reserveRows: 6 },
+  { key: "normal", label: "보통 (8×6)", rows: 6, cols: 8, cardKinds: 16, reserveRows: 8 },
+  { key: "hard", label: "어려움 (10×8)", rows: 8, cols: 10, cardKinds: 30, reserveRows: 10 },
 ];
+
+// UP 모드: 시작 시 하단에 미리 깔아두는 줄 수 (rows 보다 작게 캡). 나머지 상단은 빈 상태로 시작.
+export const UP_INITIAL_ROWS = 3;
+// 승리 모드: 난이도별 삽입할 "승" 합성 카드 쌍 수 (easy1/normal2/hard2).
+export function victoryPairsFor(diff: Difficulty): number {
+  return diff.key === "easy" ? 1 : 2;
+}
 
 export function resolveDifficulty(d: DifficultyKey | Difficulty): Difficulty {
   if (typeof d !== "string") return d;
@@ -196,8 +203,8 @@ export interface GenerateOpts {
  * 시드 기반 보드 생성. 같은 (pool, difficulty, seed, opts) → 항상 같은 보드.
  * - 마스크: opts.mask 강제 또는 시드 랜덤 (UP 모드는 줄 상승 로직 단순화를 위해 rect 강제 — 가정)
  * - 상하이: 2층 보드. 층별로 짝수 장, 층 내에서만 짝 성립(층별 페어 생성 — 단순화 가정)
- * - 승리: 풀에서 최고가 카드 1쌍을 victory 로 마킹 (해당 카드는 보드에 정확히 1쌍만 존재)
- * - UP: 난이도별 reserveRows 만큼 예비 줄 덱 생성 (줄 안에서 짝 성립)
+ * - 승리: 합성 "승" 카드(matchKey "__victory__")를 난이도별 victoryPairs 쌍만큼 중앙 근처에 배치
+ * - UP: 초기엔 하단 UP_INITIAL_ROWS 줄만 배치, reserveRows 만큼 상승 예비 줄 덱 생성 (줄 안에서 짝 성립)
  */
 export function generateBoard(
   pool: GameCard[],
@@ -226,11 +233,9 @@ export function generateBoard(
   const kindCount = Math.min(diff.cardKinds, usable.length);
   const kinds = seededShuffle(usable, rnd).slice(0, kindCount);
 
-  // 승리 모드: 종류 중 최고가 카드 = 승리 카드 (보드에 1쌍만 배치)
-  const victoryCard =
-    mapMode === "victory"
-      ? kinds.reduce((a, b) => (b.priceUsdCents > a.priceUsdCents ? b : a))
-      : null;
+  // 승리 모드: 합성 "승" 카드(고유 matchKey)를 난이도별 쌍 수만큼 중앙 근처에 배치
+  const vCard = mapMode === "victory" ? victoryCard() : null;
+  const victoryPairs = vCard ? victoryPairsFor(diff) : 0;
 
   // 상하이: 층 간 짝 맞추기 금지 단순화 — 층별로 서로소 종류 집합 사용
   const kindsByLayer: GameCard[][] = [kinds];
@@ -254,18 +259,11 @@ export function generateBoard(
   };
   // 종류를 미리 등록해 cards 인덱스를 안정화 (reserve 주입 카드 포함)
   for (const k of kinds) idxOf(k);
+  if (vCard) idxOf(vCard); // 승리 합성 카드도 cards[]에 1회 등록
 
-  // UP 모드: 예비 줄 덱 (줄 안에서 짝 성립 → 주입 후에도 전체 짝수 유지)
-  const reserve: GameCard[][] = [];
+  // UP 모드: 초기엔 하단 일부 줄만 배치 + 앞으로 상승할 예비 줄 덱 (별도 경로)
   if (mapMode === "up") {
-    for (let rrow = 0; rrow < diff.reserveRows; rrow++) {
-      const rowDeck: GameCard[] = [];
-      for (let p = 0; p < diff.cols / 2; p++) {
-        const card = kinds[Math.floor(rnd() * kinds.length)];
-        rowDeck.push(card, card);
-      }
-      reserve.push(seededShuffle(rowDeck, rnd));
-    }
+    return generateUpBoard(diff, seed, maskKind, mask, kinds, cardsList, idxOf, rnd);
   }
 
   // 배치 시도: 시작부터 최소 한 수 보장 (실패 시 재셔플 → 재시도, 모두 시드 rnd 기반)
@@ -275,44 +273,148 @@ export function generateBoard(
     for (let layer = 0; layer < layerCells.length; layer++) {
       const cells = layerCells[layer];
       const layerKinds = kindsByLayer[layer];
-      const pairs = cells.length / 2;
-      const deck: GameCard[] = [];
-      if (layer === 0 && victoryCard) {
-        // 승리 카드 1쌍 고정 + 나머지는 승리 카드 제외 종류를 순환
-        deck.push(victoryCard, victoryCard);
-        const rest = layerKinds.filter((k) => k.cardId !== victoryCard.cardId);
-        const cyc = rest.length ? rest : layerKinds;
-        for (let p = 1; p < pairs; p++) {
-          const card = cyc[(p - 1) % cyc.length];
+      if (layer === 0 && vCard && victoryPairs > 0) {
+        // 중앙 거리순 정렬 → 앞쪽 victoryPairs*2 셀에 "승" 카드, 나머지는 일반 페어
+        const cr = (diff.rows + 1) / 2;
+        const cc = (diff.cols + 1) / 2;
+        const ordered = cells
+          .map((cell) => ({ cell, d: (cell.r - cr) ** 2 + (cell.c - cc) ** 2 }))
+          .sort((a, b) => a.d - b.d || a.cell.r - b.cell.r || a.cell.c - b.cell.c)
+          .map((x) => x.cell);
+        const vCount = Math.min(victoryPairs * 2, cells.length);
+        const victoryCells = ordered.slice(0, vCount);
+        const normalCells = ordered.slice(vCount);
+        const normPairs = normalCells.length / 2;
+        const deck: GameCard[] = [];
+        for (let p = 0; p < normPairs; p++) {
+          const card = layerKinds[p % layerKinds.length];
           deck.push(card, card);
         }
+        const shuffled = seededShuffle(deck, rnd);
+        for (const cell of victoryCells) {
+          tiles.push({
+            tileId: tileId++,
+            cardIdx: idxOf(vCard),
+            cardId: vCard.cardId,
+            matchKey: vCard.matchKey,
+            r: cell.r,
+            c: cell.c,
+            layer: 0,
+            removed: false,
+            victory: true,
+            card: vCard,
+          });
+        }
+        normalCells.forEach((cell, i) => {
+          const card = shuffled[i];
+          tiles.push({
+            tileId: tileId++,
+            cardIdx: idxOf(card),
+            cardId: card.cardId,
+            matchKey: card.matchKey,
+            r: cell.r,
+            c: cell.c,
+            layer: 0,
+            removed: false,
+            card,
+          });
+        });
       } else {
+        const pairs = cells.length / 2;
+        const deck: GameCard[] = [];
         for (let p = 0; p < pairs; p++) {
           const card = layerKinds[p % layerKinds.length];
           deck.push(card, card);
         }
-      }
-      const shuffled = seededShuffle(deck, rnd);
-      cells.forEach((cell, i) => {
-        const card = shuffled[i];
-        tiles.push({
-          tileId: tileId++,
-          cardIdx: idxOf(card),
-          cardId: card.cardId,
-          matchKey: card.matchKey,
-          r: cell.r,
-          c: cell.c,
-          layer,
-          removed: false,
-          ...(victoryCard && layer === 0 && card.cardId === victoryCard.cardId ? { victory: true } : {}),
-          card,
+        const shuffled = seededShuffle(deck, rnd);
+        cells.forEach((cell, i) => {
+          const card = shuffled[i];
+          tiles.push({
+            tileId: tileId++,
+            cardIdx: idxOf(card),
+            cardId: card.cardId,
+            matchKey: card.matchKey,
+            r: cell.r,
+            c: cell.c,
+            layer,
+            removed: false,
+            card,
+          });
         });
-      });
+      }
     }
     const board: Board = {
       rows: diff.rows,
       cols: diff.cols,
       mapMode,
+      difficulty: diff.key,
+      seed,
+      maskKind,
+      mask,
+      tiles,
+      cards: cardsList,
+      reserve: [],
+      nextTileId: tileId,
+    };
+    if (hasMove(board)) return board;
+    reshuffleWith(board, rnd);
+    if (hasMove(board)) return board;
+  }
+  throw new Error("보드 생성 실패");
+}
+
+// UP 모드 전용 생성: 하단 UP_INITIAL_ROWS 줄만 채우고 상단은 빈 상태로 시작.
+// reserve = 앞으로 상승할 줄 덱(난이도별 reserveRows개, 각 줄 안에서 짝 성립).
+function generateUpBoard(
+  diff: Difficulty,
+  seed: number,
+  maskKind: MaskKind,
+  mask: boolean[][],
+  kinds: GameCard[],
+  cardsList: GameCard[],
+  idxOf: (card: GameCard) => number,
+  rnd: () => number
+): Board {
+  // 한 줄 덱: cols/2 페어 → 줄 안에서 셔플(줄 내부 짝 성립 → 전체 짝수 유지)
+  const makeRowDeck = (): GameCard[] => {
+    const rowDeck: GameCard[] = [];
+    for (let p = 0; p < diff.cols / 2; p++) {
+      const card = kinds[Math.floor(rnd() * kinds.length)];
+      rowDeck.push(card, card);
+    }
+    return seededShuffle(rowDeck, rnd);
+  };
+
+  // 예비(상승) 줄 덱 — 배치보다 먼저 생성해 시드 소비 순서를 고정(재현성)
+  const reserve: GameCard[][] = [];
+  for (let rrow = 0; rrow < diff.reserveRows; rrow++) reserve.push(makeRowDeck());
+
+  const initialRows = Math.min(UP_INITIAL_ROWS, diff.rows);
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const tiles: Tile[] = [];
+    let tileId = 0;
+    // 하단 initialRows 줄만 배치 (r = rows-initialRows+1 .. rows)
+    for (let r = diff.rows - initialRows + 1; r <= diff.rows; r++) {
+      const row = makeRowDeck();
+      for (let c = 1; c <= diff.cols; c++) {
+        const card = row[c - 1];
+        tiles.push({
+          tileId: tileId++,
+          cardIdx: idxOf(card),
+          cardId: card.cardId,
+          matchKey: card.matchKey,
+          r,
+          c,
+          layer: 0,
+          removed: false,
+          card,
+        });
+      }
+    }
+    const board: Board = {
+      rows: diff.rows,
+      cols: diff.cols,
+      mapMode: "up",
       difficulty: diff.key,
       seed,
       maskKind,
@@ -326,7 +428,7 @@ export function generateBoard(
     reshuffleWith(board, rnd);
     if (hasMove(board)) return board;
   }
-  throw new Error("보드 생성 실패");
+  throw new Error("UP 보드 생성 실패");
 }
 
 // ── 점유 격자 / 선택 가능 판정 ───────────────────────────────
@@ -430,26 +532,20 @@ function reshuffleWith(board: Board, rnd: () => number): void {
 
 // ── UP 모드 ──────────────────────────────────────────────────
 /**
- * UP 모드 상승 주입.
- * 가정(주석 명시): FEATURE_SPEC 의 "특정 층의 매칭 가능 카드 소진 → 최하단부터 한 줄 추가 상승"을
- * "어떤 줄(행)의 타일이 전부 제거되면, 그 아래 줄들을 한 줄 위로 shift 하고 최하단에 예비 한 줄 주입"
- * 으로 구현한다. 주입 후 남은 reserve 를 반환하고, 주입 조건이 아니면 null 을 반환한다.
+ * UP 모드 타이머 상승. 타이머(server tickUp)가 주기적으로 호출한다.
+ * - mapMode 가 up 이 아니거나 reserve 소진 → "empty" (더 이상 상승 없음).
+ * - 최상단 행(r===1)에 미제거 타일이 있으면 상승 시 화면 밖으로 나가므로 이번 틱은 보류 → "blocked"
+ *   (관대한 처리 — 즉사 없음, 시프트/주입 안 함).
+ * - 그 외: 모든 미제거 타일을 한 줄 위로(r-=1) 올리고, reserve 에서 한 줄 꺼내 최하단(r=rows)에 주입 → "ok".
  */
-export function upInject(board: Board): GameCard[][] | null {
-  if (board.mapMode !== "up" || board.reserve.length === 0) return null;
+export function upRise(board: Board): "ok" | "blocked" | "empty" {
+  if (board.mapMode !== "up" || board.reserve.length === 0) return "empty";
   const live = board.tiles.filter((t) => !t.removed);
-  if (live.length === 0) return null; // 전부 제거 = 클리어, 주입 없음
-  // 완전히 비워진 줄(위에서부터) 탐색
-  let emptyRow = -1;
-  for (let r = 1; r <= board.rows; r++) {
-    if (!live.some((t) => t.r === r)) {
-      emptyRow = r;
-      break;
-    }
-  }
-  if (emptyRow < 0) return null;
-  // 빈 줄 아래의 미제거 타일을 한 줄 위로 shift
-  for (const t of live) if (t.r > emptyRow) t.r -= 1;
+  if (live.length === 0) return "empty"; // 이미 전부 제거(클리어) — 부활 주입 방지
+  // 최상단 점유 시 이번 틱 상승 보류
+  if (live.some((t) => t.r === 1)) return "blocked";
+  // 모든 미제거 타일 한 줄 위로
+  for (const t of live) t.r -= 1;
   // 최하단에 예비 한 줄 주입 (UP 은 rect 마스크 — c = 1..cols 전부 유효)
   const rowCards = board.reserve.shift()!;
   const idxOf = new Map(board.cards.map((c, i) => [c.cardId, i] as const));
@@ -472,7 +568,7 @@ export function upInject(board: Board): GameCard[][] | null {
       card,
     });
   });
-  return board.reserve;
+  return "ok";
 }
 
 // ── 롤링 모드 ────────────────────────────────────────────────

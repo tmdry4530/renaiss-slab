@@ -13,7 +13,7 @@ import {
   reshuffle,
   rollRight,
   toTileStates,
-  upInject,
+  upRise,
   validateMatch,
   type Board,
   type Tile,
@@ -23,6 +23,7 @@ import { finalScore, matchScore, rankPlayers, xpFor, type RankInput } from "../s
 import {
   ITEM_QUOTA,
   ROLLING_INTERVAL_MS,
+  UP_RISE_INTERVAL_MS,
   type Ack,
   type BoardPatch,
   type ComboPower,
@@ -60,6 +61,7 @@ export class Match {
   private startedAt = Date.now();
   private states = new Map<string, PState>();
   private rollingTimer: ReturnType<typeof setInterval> | null = null;
+  private upTimer: ReturnType<typeof setInterval> | null = null;
   private finishTimer: ReturnType<typeof setTimeout> | null = null;
   private finishingAnnounced = false;
   private clearOrder = 0; // 클리어 시각 순 순번
@@ -106,6 +108,10 @@ export class Match {
     if (this.room.config.mapMode === "rolling") {
       this.rollingTimer = setInterval(() => this.tickRolling(), ROLLING_INTERVAL_MS);
     }
+    // UP 모드: UP_RISE_INTERVAL_MS 마다 각 플레이어 보드를 한 줄 위로 상승
+    if (this.room.config.mapMode === "up") {
+      this.upTimer = setInterval(() => this.tickUp(), UP_RISE_INTERVAL_MS);
+    }
   }
 
   /** 타이머 정리 (finishing/ended/방 삭제 시) */
@@ -113,6 +119,10 @@ export class Match {
     if (this.rollingTimer) {
       clearInterval(this.rollingTimer);
       this.rollingTimer = null;
+    }
+    if (this.upTimer) {
+      clearInterval(this.upTimer);
+      this.upTimer = null;
     }
     if (this.finishTimer) {
       clearTimeout(this.finishTimer);
@@ -307,7 +317,7 @@ export class Match {
     return st;
   }
 
-  /** 제거 이벤트 공통 후처리: 승리 판정 → 클리어 판정 → UP 주입 → 교착 재셔플 → 진행도 브로드캐스트 */
+  /** 제거 이벤트 공통 후처리: 승리 판정 → 클리어 판정 → 교착 재셔플 → 진행도 브로드캐스트 (UP 상승은 tickUp 전담) */
   private afterRemoval(playerId: string, st: PState, removedTiles: Tile[]): void {
     if (this.ended) return;
 
@@ -328,10 +338,14 @@ export class Match {
       if (!this.finishingAnnounced) {
         this.finishingAnnounced = true;
         this.room.state = "finishing";
-        // 롤링 등 매치 타이머는 finishing 진입 시 정리 (지시 사항)
+        // 롤링/UP 등 매치 타이머는 finishing 진입 시 정리 (지시 사항)
         if (this.rollingTimer) {
           clearInterval(this.rollingTimer);
           this.rollingTimer = null;
+        }
+        if (this.upTimer) {
+          clearInterval(this.upTimer);
+          this.upTimer = null;
         }
         const winner = this.room.players.find((pl) => pl.playerId === playerId);
         this.deps.io.to(this.room.roomId).emit("match:finishing", {
@@ -346,12 +360,7 @@ export class Match {
       return;
     }
 
-    // UP 모드: 줄이 비면 최하단에서 예비 줄 상승 주입
-    if (this.room.config.mapMode === "up") {
-      const injected = upInject(st.board);
-      if (injected) this.emitBoard(playerId, st, "up");
-    }
-
+    // UP 모드 상승은 타이머(tickUp)가 전담. 제거로 교착이 되면 아래 교착 재셔플이 처리한다.
     // 교착 감지: 매 제거 후 수가 없으면 자동 재셔플
     if (!hasMove(st.board)) {
       reshuffle(st.board);
@@ -363,6 +372,8 @@ export class Match {
 
   /** 도감·이번 판 집계 반영. 이번에 도감 등록된 cardId 목록을 반환. */
   private registerRemoval(playerId: string, st: PState, card: GameCard, pairs: number): string[] {
+    // 승리 합성 카드는 실물이 아니므로 도감/집계에서 제외
+    if (card.cardId === "__victory__") return [];
     const cur = st.met.get(card.cardId) ?? { card, count: 0 };
     cur.count += pairs;
     st.met.set(card.cardId, cur);
@@ -386,6 +397,24 @@ export class Match {
       } else {
         this.emitBoard(pid, st, "rolling");
       }
+    }
+  }
+
+  /** UP 틱: 각 미클리어 플레이어 보드를 한 줄 위로 상승 (최상단 점유/reserve 소진 시 상승 없음) */
+  private tickUp(): void {
+    if (this.ended || this.room.state !== "playing") return;
+    for (const [pid, st] of this.states) {
+      if (st.cleared) continue;
+      const res = upRise(st.board);
+      if (res !== "ok") continue; // "blocked"/"empty" → 상승 없음
+      // 상승 후 교착이면 재셔플로 구제, 아니면 상승 반영
+      if (st.board.tiles.some((t) => !t.removed) && !hasMove(st.board)) {
+        reshuffle(st.board);
+        this.emitBoard(pid, st, "reshuffle");
+      } else {
+        this.emitBoard(pid, st, "up");
+      }
+      this.broadcastProgress(pid, st);
     }
   }
 

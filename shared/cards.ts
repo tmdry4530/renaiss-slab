@@ -24,6 +24,34 @@ export interface GameCard {
   attribution: "Renaiss OS Index";
 }
 
+// 승리 모드 합성 "승" 카드: 실물 풀에 없는 특수 카드. matchKey 가 고유("__victory__")라
+// 승리 타일끼리만 매칭된다. imageUrl 이 비어 usable 풀(imageUrl 필터)에는 자연 제외된다.
+export function victoryCard(): GameCard {
+  return {
+    cardId: "__victory__",
+    matchKey: "__victory__",
+    game: "pokemon", // 무해한 기본값 (도감엔 등록하지 않음)
+    type: "POKEMON",
+    name: "승리",
+    setName: "",
+    setCode: null,
+    cardNumber: "",
+    variation: null,
+    language: "ko",
+    imageUrl: "",
+    imageUrlThumb: "",
+    company: "",
+    grade: "",
+    gradeLabel: "승리",
+    priceUsdCents: 0,
+    deltaPct: 0,
+    confidence: "low",
+    lastSaleAt: "",
+    href: "",
+    attribution: "Renaiss OS Index",
+  };
+}
+
 export interface CardPool {
   generatedAt: string;
   source: string;

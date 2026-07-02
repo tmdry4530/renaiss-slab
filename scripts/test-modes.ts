@@ -1,7 +1,7 @@
 // 맵 모드(롤링/UP/승리/상하이)·마스크·콤보·점수·시드 재현성 테스트 (shared/)
 import {
-  generateBoard, toTileStates, isTileFree, rollRight, upInject, findHint,
-  occupiedGrid, makeMask, MASK_KINDS, DIFFICULTIES, validateMatch, type Board,
+  generateBoard, toTileStates, isTileFree, rollRight, upRise, findHint, hasMove,
+  occupiedGrid, makeMask, MASK_KINDS, DIFFICULTIES, UP_INITIAL_ROWS, validateMatch, type Board,
 } from "../shared/board.ts";
 import { ComboTracker, comboPowerAt, nextCombo, applyComboPower } from "../shared/combo.ts";
 import { matchScore, finalScore, xpFor, rankPlayers, settlementScore } from "../shared/score.ts";
@@ -79,49 +79,72 @@ console.log("[롤링]");
   check("마스크 보드 롤링: 유효 칸 위 유지", bm.tiles.filter((t) => !t.removed).every((t) => bm.mask[t.r - 1][t.c - 1]));
 }
 
-// ── 4) UP: 줄 소진 시 주입·reserve 감소 ──────────────────────
+// ── 4) UP: 타이머 상승(upRise)·초기 하단 배치·reserve 감소 ────
 console.log("[UP]");
 {
   const diff = DIFFICULTIES.find((d) => d.key === "normal")!;
   const b = generateBoard(pool, "normal", 21, { mapMode: "up" });
   check("UP 은 rect 마스크 강제(가정)", b.maskKind === "rect");
-  check("reserve 줄 수 = 난이도 설정", b.reserve.length === diff.reserveRows);
+  check("reserve 줄 수 = 난이도 설정(normal=8)", b.reserve.length === diff.reserveRows && diff.reserveRows === 8);
   check("reserve 각 줄은 cols 장·줄 안에서 짝수", b.reserve.every((row) => row.length === b.cols && [...countBy(row, (c) => c.matchKey).values()].every((n) => n % 2 === 0)));
-  check("빈 줄 없으면 주입 안 함", upInject(b) === null);
-  // 3행을 통째로 제거 → 주입 트리거 (행 단위 강제 제거라 보드 자체의 짝 균형은 깨진 상태)
-  for (const t of b.tiles) if (t.r === 3) t.removed = true;
+  // 초기엔 하단 UP_INITIAL_ROWS 줄만 배치, 상단은 빈 상태
+  const initialRows = Math.min(UP_INITIAL_ROWS, b.rows);
+  const occRows = [...new Set(b.tiles.map((t) => t.r))].sort((x, y) => x - y);
+  check("초기 배치는 하단 UP_INITIAL_ROWS 줄만", occRows.length === initialRows && occRows.every((r) => r > b.rows - initialRows));
+  check("각 하단 줄이 가득 참(cols 장)", occRows.every((r) => b.tiles.filter((t) => t.r === r).length === b.cols));
+  check("각 줄 내부에서 카드별 짝수", occRows.every((r) => [...countBy(b.tiles.filter((t) => t.r === r), (t) => t.matchKey).values()].every((n) => n % 2 === 0)));
+  check("초기부터 최소 한 수 존재", hasMove(b));
+  check("초기 총 타일 = initialRows × cols(짝수)", b.tiles.length === initialRows * b.cols && b.tiles.length % 2 === 0);
+
+  // upRise 1회: 전체 한 줄 상승 + 최하단 한 줄 주입
   const totalLiveBefore = b.tiles.filter((t) => !t.removed).length;
-  const beforeCnt = countBy(b.tiles.filter((t) => !t.removed), (t) => t.matchKey);
-  const left = upInject(b);
-  check("주입 성공 시 남은 reserve 반환", left !== null && left.length === diff.reserveRows - 1);
+  const reserveBefore = b.reserve.length;
+  const res = upRise(b);
+  check("upRise 반환 'ok'", res === "ok");
+  check("upRise 후 reserve 하나 감소", b.reserve.length === reserveBefore - 1);
   const live = b.tiles.filter((t) => !t.removed);
-  check("주입 후 타일 수 = 기존 + 한 줄", live.length === totalLiveBefore + b.cols);
-  check("최하단 줄이 가득 참", live.filter((t) => t.r === b.rows).length === b.cols);
-  // 주입은 줄 안에서 짝이 성립하므로 카드별 증가분이 항상 짝수(전체 짝 균형을 깨지 않음)
-  const afterCnt = countBy(live, (t) => t.matchKey);
-  check("주입 증가분은 카드별 짝수", [...afterCnt].every(([k, n]) => (n - (beforeCnt.get(k) ?? 0)) % 2 === 0 && n >= (beforeCnt.get(k) ?? 0)));
-  check("주입 타일 tileId 유일", new Set(b.tiles.map((t) => t.tileId)).size === b.tiles.length);
-  check("주입 타일 cardIdx 정합", live.every((t) => b.cards[t.cardIdx]?.cardId === t.cardId));
-  // reserve 소진 시 null
-  for (const t of b.tiles) if (t.r === 2) t.removed = true;
-  upInject(b);
-  for (const t of b.tiles) if (t.r === 2 && !t.removed) t.removed = true;
-  check("reserve 소진 후 주입 불가", b.reserve.length === 0 && upInject(b) === null);
+  check("upRise 후 타일 수 = 기존 + 한 줄", live.length === totalLiveBefore + b.cols);
+  check("upRise 후 최하단 줄이 가득 참", live.filter((t) => t.r === b.rows).length === b.cols);
+  check("upRise 타일 tileId 유일", new Set(b.tiles.map((t) => t.tileId)).size === b.tiles.length);
+  check("upRise 타일 cardIdx 정합", live.every((t) => b.cards[t.cardIdx]?.cardId === t.cardId));
+  check("전체 matchKey 짝수 유지", [...countBy(live, (t) => t.matchKey).values()].every((n) => n % 2 === 0));
+
+  // 최상단 점유까지 상승하면 "blocked"(reserve 남아도 상승 보류)
+  const b2 = generateBoard(pool, "normal", 22, { mapMode: "up" });
+  let last: "ok" | "blocked" | "empty" = "ok";
+  for (let i = 0; i < 50 && (last = upRise(b2)) === "ok"; i++);
+  check("최상단 점유 시 blocked (reserve 남음)", last === "blocked" && b2.reserve.length > 0);
+  check("blocked 시엔 최상단 행 점유 상태", b2.tiles.some((t) => !t.removed && t.r === 1));
+
+  // reserve 소진 시 "empty"
+  const b3 = generateBoard(pool, "normal", 23, { mapMode: "up" });
+  b3.reserve.length = 0;
+  check("reserve 소진 시 empty", upRise(b3) === "empty");
+  const nb = generateBoard(pool, "normal", 24);
+  check("UP 아닌 보드는 empty", upRise(nb) === "empty");
 }
 
-// ── 5) 승리: victory 쌍 존재·매칭 시 식별 ────────────────────
+// ── 5) 승리: 합성 "승" 카드 삽입(난이도별 쌍 수)·매칭 시 식별 ──
 console.log("[승리]");
 {
-  const b = generateBoard(pool, "hard", 31, { mapMode: "victory" });
-  const vTiles = b.tiles.filter((t) => t.victory);
-  check("victory 타일 정확히 1쌍(2장)", vTiles.length === 2);
-  check("victory 쌍은 같은 카드", vTiles.length === 2 && vTiles[0].matchKey === vTiles[1].matchKey);
-  const vCard = vTiles[0]?.card;
-  check("victory 카드 = 풀 내 최고가", !!vCard && b.cards.every((c) => c.priceUsdCents <= vCard.priceUsdCents));
-  check("victory 카드는 보드에 그 1쌍만 존재", b.tiles.filter((t) => t.matchKey === vCard.matchKey).length === 2);
-  check("toTileStates 가 victory 플래그 보존", toTileStates(b).filter((s) => s.victory).length === 2);
-  // 매칭 시 식별: 두 타일이 모두 victory 면 즉시 승리로 판별 가능
-  check("victory 쌍 식별 가능", vTiles.every((t) => t.victory === true));
+  const easy = generateBoard(pool, "easy", 30, { mapMode: "victory" });
+  const normal = generateBoard(pool, "normal", 31, { mapMode: "victory" });
+  const hard = generateBoard(pool, "hard", 32, { mapMode: "victory" });
+  check("easy 승리 타일 1쌍(2장)", easy.tiles.filter((t) => t.victory).length === 2);
+  check("normal 승리 타일 2쌍(4장)", normal.tiles.filter((t) => t.victory).length === 4);
+  check("hard 승리 타일 2쌍(4장)", hard.tiles.filter((t) => t.victory).length === 4);
+
+  const vTiles = normal.tiles.filter((t) => t.victory);
+  check("승리 타일 matchKey = __victory__", vTiles.every((t) => t.matchKey === "__victory__"));
+  check("승리 타일은 합성 '승' 카드", vTiles.every((t) => t.card.cardId === "__victory__" && t.card.name === "승리" && t.card.gradeLabel === "승리" && t.card.imageUrl === ""));
+  check("승리 카드 cards[]에 1회만 등록", normal.cards.filter((c) => c.cardId === "__victory__").length === 1);
+  check("__victory__ matchKey 는 승리 타일만", normal.tiles.filter((t) => t.matchKey === "__victory__").length === 4);
+  check("모든 승리 타일 cardIdx 정합", vTiles.every((t) => normal.cards[t.cardIdx]?.cardId === "__victory__"));
+  check("toTileStates 가 victory 플래그 보존", toTileStates(normal).filter((s) => s.victory).length === 4);
+  // 승리 짝 매칭 → 즉시 승리로 판별 가능 (victory:true 기반)
+  check("승리 쌍 식별 가능", vTiles.every((t) => t.victory === true));
+  // 일반 타일은 승리 카드가 아님(전체 짝수 유지)
+  check("일반 타일 matchKey 짝수 유지", [...countBy(normal.tiles, (t) => t.matchKey).values()].every((n) => n % 2 === 0));
 }
 
 // ── 6) 상하이: 층별 짝수·덮인 타일 잠김·free 판정 ────────────
