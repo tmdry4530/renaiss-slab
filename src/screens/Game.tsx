@@ -731,7 +731,9 @@ export default function Game({ init, room, myId }: Props) {
         <div className="cleared-wait">🎉 모든 카드를 제거했어요! 결과 집계 중…</div>
       )}
 
-      {notice && <div className="notice">{notice}</div>}
+      {notice && (
+        <div className={`notice${power || scissorOn ? " below-banner" : ""}`}>{notice}</div>
+      )}
 
       {/* 카드 제거 도슨트 토스트 (1단계 짧은 정보 — 상세는 도감에서) */}
       {toast && (

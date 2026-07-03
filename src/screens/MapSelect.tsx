@@ -109,7 +109,11 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
         display: "grid",
         gridTemplateColumns: "160px 1fr",
         gridTemplateRows: "auto 1fr auto",
-        height: "100%",
+        // 뷰포트에 고정(100dvh) — 부모 .screen-3col 은 min-height 라 콘텐츠가 길면 늘어나
+        // 하단 취소/선택 완료 바가 화면 밖으로 잘렸다. 여기서 높이를 못 박아 가운데 그리드만
+        // 내부 스크롤되고 푸터는 항상 보이도록 한다(짧은 뷰포트 대응, 플레이 피드백).
+        height: "100dvh",
+        maxHeight: "100dvh",
         minHeight: 0,
       }}
     >

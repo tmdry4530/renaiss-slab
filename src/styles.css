@@ -190,8 +190,11 @@ h2 { font-size: 16px; margin: 0; }
 .notice {
   position: fixed; left: 50%; top: 16%; transform: translateX(-50%);
   background: var(--panel); border: 1px solid var(--line); color: var(--text);
-  padding: 10px 18px; border-radius: 10px; font-size: 14px; z-index: 20;
+  padding: 10px 18px; border-radius: 10px; font-size: 14px; z-index: 30;
 }
+/* 콤보 파워/가위 배너(.mode-banner, top~76–116px, z-index 25)가 떠 있을 때는
+   그 아래로 내려 겹침을 피한다(짧은 뷰포트에서 배너 뒤에 가려 잘 안 보였음 — 플레이 피드백). */
+.notice.below-banner { top: 128px; }
 .docent {
   position: fixed; right: 22px; bottom: 22px; display: flex; gap: 12px; align-items: center;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
