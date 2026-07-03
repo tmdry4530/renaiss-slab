@@ -165,6 +165,16 @@ console.log("[승리]");
   check("승리 짝은 시작 시 서로 연결 불가(즉시 종료 방지)", !anyStartConnectable);
   // 일반 타일은 승리 카드가 아님(전체 짝수 유지)
   check("일반 타일 matchKey 짝수 유지", [...countBy(normal.tiles, (t) => t.matchKey).values()].every((n) => n % 2 === 0));
+
+  // 회귀 방지(플레이 피드백): 콤보 파워(pair/clear)는 "승" 카드를 제거하지 못한다 →
+  // 경로 매칭으로만 승리하도록. applyComboPower("__victory__", …) 는 항상 빈 배열.
+  {
+    const vb = generateBoard(pool, "normal", 77, { mapMode: "victory" });
+    const before = vb.tiles.filter((t) => t.victory && !t.removed).length;
+    check("콤보 파워 pair 는 승리 카드 제거 불가", applyComboPower(vb, "__victory__", "pair").length === 0);
+    check("콤보 파워 clear 는 승리 카드 제거 불가", applyComboPower(vb, "__victory__", "clear").length === 0);
+    check("콤보 파워 후 승리 타일 그대로 유지", vb.tiles.filter((t) => t.victory && !t.removed).length === before && before === 2);
+  }
 }
 
 // ── 6) 상하이: 층별 짝수·덮인 타일 잠김·free 판정 ────────────

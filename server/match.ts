@@ -203,6 +203,12 @@ export class Match {
       return;
     }
     const cardId = p?.cardId ?? "";
+    // 승리 "승" 카드는 콤보 파워 대상에서 제외 — 경로 매칭으로만 승리하도록(플레이 피드백).
+    // 파워는 유지되어 다른 카드를 다시 지정할 수 있다.
+    if (cardId === "__victory__") {
+      ack({ ok: false, error: "승리 카드는 콤보 파워로 제거할 수 없습니다" });
+      return;
+    }
     const removedIds = applyComboPower(st.board, cardId, st.pendingPower.kind);
     if (removedIds.length === 0) {
       // 대상이 없으면 파워는 유지 — 다른 카드를 다시 지정할 수 있다
@@ -274,6 +280,11 @@ export class Match {
     }
     if (a.matchKey !== b.matchKey) {
       ack({ ok: false, error: "같은 카드만 제거할 수 있습니다" });
+      return;
+    }
+    // 승리 "승" 카드는 가위 대상에서 제외 — 경로 매칭으로만 승리하도록(플레이 피드백).
+    if (a.victory || b.victory) {
+      ack({ ok: false, error: "승리 카드는 가위로 제거할 수 없습니다" });
       return;
     }
     st.items.scissor--;

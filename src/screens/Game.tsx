@@ -344,6 +344,10 @@ export default function Game({ init, room, myId }: Props) {
 
     // 콤보 파워 지정 모드: 클릭한 카드로 발동
     if (power) {
+      if (t.victory) {
+        flash("승리 카드는 콤보 파워로 제거할 수 없어요"); // 파워 유지 — 다른 카드 지정 가능
+        return;
+      }
       getSocket().emit("combo:power", { cardId: cardOf(t).cardId }, (r) => {
         if (!r.ok) flash(errText(r.error));
       });
@@ -353,6 +357,10 @@ export default function Game({ init, room, myId }: Props) {
 
     // 가위 모드: 카드 1장 클릭 → 같은 matchKey 의 다른 free·미제거 타일을 자동으로 찾아 짝 제거
     if (scissorOn) {
+      if (t.victory) {
+        flash("승리 카드는 가위로 제거할 수 없어요"); // 모드 유지 — 다른 카드 클릭 가능
+        return;
+      }
       const other = tiles.find(
         (x) =>
           x.tileId !== t.tileId &&

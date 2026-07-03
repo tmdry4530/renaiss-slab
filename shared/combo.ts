@@ -58,7 +58,11 @@ export class ComboTracker {
 export function applyComboPower(board: Board, cardId: string, kind: ComboPowerKind): number[] {
   const card = board.cards.find((c) => c.cardId === cardId);
   if (!card) return [];
-  const targets = board.tiles.filter((t) => !t.removed && t.matchKey === card.matchKey);
+  // 승리 "승" 카드는 콤보 파워로 제거 불가 — 반드시 경로 매칭으로만 승리하도록(플레이 피드백).
+  // 승리 타일은 victory 플래그로 구분되며 승리 모드에만 존재하므로 전역 필터링이 안전하다.
+  const targets = board.tiles.filter(
+    (t) => !t.removed && !t.victory && t.matchKey === card.matchKey
+  );
   if (targets.length < 2) return [];
 
   if (kind === "clear") {
