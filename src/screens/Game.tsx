@@ -373,9 +373,11 @@ export default function Game({ init, room, myId }: Props) {
         return;
       }
       const pair: [number, number] = [t.tileId, other.tileId];
+      setItems((it) => ({ ...it, scissor: it.scissor - 1 })); // 낙관적 즉시 차감
       getSocket().emit("item:use", { type: "scissor", tiles: pair }, (r) => {
-        if (r.ok) setItems((it) => ({ ...it, scissor: it.scissor - 1 }));
-        else flash(errText(r.error));
+        if (r.data?.items) setItems(r.data.items); // 서버 권위 잔량으로 동기화
+        else if (!r.ok) setItems((it) => ({ ...it, scissor: it.scissor + 1 })); // 실패 + items 미반환 → 복구
+        if (!r.ok) flash(errText(r.error));
       });
       setScissorOn(false);
       return;
@@ -410,12 +412,15 @@ export default function Game({ init, room, myId }: Props) {
   // ── 아이템 ──────────────────────────────────────────────────
   function useSimpleItem(type: "search" | "shuffle") {
     if (items[type] <= 0) return;
+    setItems((it) => ({ ...it, [type]: it[type] - 1 })); // 낙관적 즉시 차감 (개수 0이면 버튼 즉시 비활성)
     getSocket().emit("item:use", { type }, (r) => {
+      // 서버 권위 잔량으로 최종 동기화(이중 차감 방지). items 미반환(가드 실패 등) + 실패면 낙관적 차감 복구.
+      if (r.data?.items) setItems(r.data.items);
+      else if (!r.ok) setItems((it) => ({ ...it, [type]: it[type] + 1 }));
       if (!r.ok) {
         flash(errText(r.error));
         return;
       }
-      setItems((it) => ({ ...it, [type]: it[type] - 1 }));
       if (type === "search" && r.data?.highlight) {
         setHighlight(r.data.highlight);
         window.clearTimeout(hlTimer.current);

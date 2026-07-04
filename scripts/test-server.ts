@@ -441,13 +441,33 @@ async function main(): Promise<void> {
   const jPlaying = await emitAck(c3.sock, "room:join", { roomId: vRoomId });
   check("진행 중 입장 불가 playing", !jPlaying.ok && jPlaying.error === "playing");
 
-  // 가위로 승리 짝 강제 제거 → 그 플레이어 즉시 1위, 유예 없이 즉시 종료
-  const scV = await emitAck(c1.sock, "item:use", { type: "scissor", tiles: [vic[0].tileId, vic[1].tileId] });
-  const endV = await c1.waitFor<any>("match:ended", 3000);
+  // 승리 카드는 가위로 제거 불가 — 경로 매칭으로만 승리 (회귀 방지, 소모도 되지 않음)
+  const scReject = await emitAck(c1.sock, "item:use", { type: "scissor", tiles: [vic[0].tileId, vic[1].tileId] });
+  check("승리 카드는 가위로 제거 불가", !scReject.ok);
+
+  // c1 이 힌트를 이어가다 승리 짝을 경로로 연결하면 유예 없이 즉시 종료
+  let endV: any = null;
+  let victoryMatched = false;
+  for (let guard = 0; guard < 500 && c1.board!.tiles.some((t) => !t.removed); guard++) {
+    const hint = findHint(c1.board!);
+    if (!hint) throw new Error("승리 모드 로컬 보드 힌트 없음 — 서버와 동기화 실패");
+    const isVictory = hint[0].matchKey === "__victory__";
+    const r = await emitAck(c1.sock, "tile:match", { tileA: hint[0].tileId, tileB: hint[1].tileId });
+    if (!r.ok) throw new Error("승리 모드 tile:match 실패: " + r.error);
+    if (isVictory) {
+      victoryMatched = true;
+      endV = await c1.waitFor<any>("match:ended", 3000);
+      break;
+    }
+    await c1.waitFor<any>("tile:matched");
+    c1.drain("player:progress");
+    c1.drain("board:update");
+  }
   await c2.waitFor<any>("match:ended", 3000);
+  check("승리 모드: 승리 짝을 경로 매칭으로 연결", victoryMatched && !!endV);
   check(
     "승리 모드: 승리 짝 매칭 → 즉시 1위·즉시 종료",
-    scV.ok && endV.ranks[0].playerId === c1.playerId && endV.ranks[0].rank === 1
+    !!endV && endV.ranks[0].playerId === c1.playerId && endV.ranks[0].rank === 1
   );
   check("승리 모드: match:finishing 유예 없음", c1.pendingCount("match:finishing") === 0);
 

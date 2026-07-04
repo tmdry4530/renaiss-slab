@@ -91,6 +91,8 @@ export const DIFFICULTIES: Difficulty[] = [
 
 // UP 모드: 시작 시 하단에 미리 깔아두는 줄 수 (rows 보다 작게 캡). 나머지 상단은 빈 상태로 시작.
 export const UP_INITIAL_ROWS = 3;
+// UP 모드: 가로 폭 강제(난이도 무관) — 넓은 보드로 교착 상승 체감 (레퍼런스 반영, 6→10).
+export const UP_BOARD_COLS = 10;
 // 승리 모드: 삽입할 "승" 합성 카드 쌍 수. 모든 "승" 타일은 matchKey 가 같아 어느 둘이든
 // 이어지면 즉시 종료되므로, 시작 시 서로 붙지 않게 배치하기 쉽도록 항상 1쌍(2장)만 넣는다.
 export function victoryPairsFor(_diff: Difficulty): number {
@@ -213,8 +215,10 @@ export function generateBoard(
   seed: number,
   opts: GenerateOpts = {}
 ): Board {
-  const diff = resolveDifficulty(difficulty);
+  const baseDiff = resolveDifficulty(difficulty);
   const mapMode: MapMode = opts.mapMode ?? "normal";
+  // UP 모드는 가로 폭 10 강제 (rows·reserveRows 는 난이도 유지). 마스크·배치 전에 확정해야 함.
+  const diff: Difficulty = mapMode === "up" ? { ...baseDiff, cols: UP_BOARD_COLS } : baseDiff;
   const rnd = mulberry32(seed >>> 0);
   const usable = pool.filter((c) => c.imageUrl);
   if (usable.length === 0) throw new Error("카드 풀이 비어 있습니다");
@@ -627,22 +631,73 @@ export function upRise(board: Board): "ok" | "blocked" | "empty" {
 
 // ── 롤링 모드 ────────────────────────────────────────────────
 /**
- * 각 행에서 미제거 타일을 마스크 내 유효 칸 기준 오른쪽으로 1칸 순환 이동(줄 끝은 wrap).
- * 제거된 칸(빈 칸)은 이동 대상이 아니며, 미제거 타일만 같은 행의 유효 셀 목록 위에서 한 칸씩 민다.
- * 유효 셀 인덱스 i → i+1 (mod n) 은 전단사라 충돌이 없다.
+ * layer 0 마스크 활성 영역의 바운딩 박스 테두리 한 겹을 시계방향 순서로 반환.
+ * 순서: 좌상단 → top행 우로 → 우측열 아래로 → bottom행 좌로 → 좌측열 위로.
+ * 바운딩 박스 경계 위이면서 실제 유효(마스크 true) 칸만 포함한다(마름모 등 비사각형 방어).
+ * 링 크기 1(단일 행/열)도 안전하게 처리.
+ */
+export function borderRingCells(board: Board): Point[] {
+  let minR = Infinity,
+    maxR = -Infinity,
+    minC = Infinity,
+    maxC = -Infinity;
+  for (let r = 0; r < board.mask.length; r++)
+    for (let c = 0; c < board.mask[r].length; c++)
+      if (board.mask[r][c]) {
+        const rr = r + 1,
+          cc = c + 1;
+        if (rr < minR) minR = rr;
+        if (rr > maxR) maxR = rr;
+        if (cc < minC) minC = cc;
+        if (cc > maxC) maxC = cc;
+      }
+  if (!isFinite(minR)) return [];
+  const valid = (r: number, c: number) =>
+    r >= 1 && r <= board.rows && c >= 1 && c <= board.cols && board.mask[r - 1][c - 1];
+  const ring: Point[] = [];
+  const seen = new Set<string>();
+  const push = (r: number, c: number) => {
+    if (!valid(r, c)) return;
+    const k = r + "," + c;
+    if (seen.has(k)) return;
+    seen.add(k);
+    ring.push({ r, c });
+  };
+  if (minR === maxR) {
+    for (let c = minC; c <= maxC; c++) push(minR, c); // 단일 행: 좌→우
+    return ring;
+  }
+  if (minC === maxC) {
+    for (let r = minR; r <= maxR; r++) push(r, minC); // 단일 열: 상→하
+    return ring;
+  }
+  for (let c = minC; c <= maxC; c++) push(minR, c); // top: 좌→우
+  for (let r = minR + 1; r <= maxR; r++) push(r, maxC); // right: 상→하
+  for (let c = maxC - 1; c >= minC; c--) push(maxR, c); // bottom: 우→좌
+  for (let r = maxR - 1; r >= minR + 1; r--) push(r, minC); // left: 하→상
+  return ring;
+}
+
+/**
+ * 롤링: 바깥 테두리 한 겹(경계 링)만 시계방향으로 1칸 회전. 내부 셀은 고정.
+ * 각 링 셀의 layer0 타일을 다음 링 셀로 옮긴다(제거된 타일·빈 슬롯도 사이클에 포함).
+ * ring[i] → ring[i+1] 은 셀 단위 전단사라 좌표 충돌이 없다. 넷마블 '롤링4각'과 동일 체감.
  */
 export function rollRight(board: Board): void {
-  for (let r = 1; r <= board.rows; r++) {
-    const validCols: number[] = [];
-    for (let c = 1; c <= board.cols; c++) if (board.mask[r - 1][c - 1]) validCols.push(c);
-    if (validCols.length < 2) continue;
-    const idxByCol = new Map(validCols.map((c, i) => [c, i] as const));
-    for (const t of board.tiles) {
-      if (t.removed || t.layer !== 0 || t.r !== r) continue;
-      const i = idxByCol.get(t.c);
-      if (i === undefined) continue;
-      t.c = validCols[(i + 1) % validCols.length];
-    }
+  const ring = borderRingCells(board);
+  if (ring.length < 2) return; // 극단(1×1·단일 셀) 방어
+  const tileAt = new Map<string, Tile>();
+  for (const t of board.tiles) {
+    if (t.layer !== 0) continue;
+    tileAt.set(t.r + "," + t.c, t);
+  }
+  const ringTiles = ring.map((cell) => tileAt.get(cell.r + "," + cell.c));
+  for (let i = 0; i < ring.length; i++) {
+    const t = ringTiles[i];
+    if (!t) continue; // 빈 슬롯 — 홀은 함께 시계방향으로 밀린다
+    const dest = ring[(i + 1) % ring.length];
+    t.r = dest.r;
+    t.c = dest.c;
   }
 }
 

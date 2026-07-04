@@ -12,15 +12,14 @@ export type ItemType = "search" | "shuffle" | "scissor";
 
 export const MAP_MODES: { key: MapMode; label: string; desc: string }[] = [
   { key: "normal", label: "일반", desc: "기본 매칭 규칙" },
-  { key: "rolling", label: "롤링", desc: "3초마다 카드가 우측으로 이동" },
-  { key: "up", label: "UP", desc: "일정 시간마다 최하단에서 한 줄씩 위로 상승" },
+  { key: "rolling", label: "롤링", desc: "4초마다 바깥 테두리가 시계방향으로 회전" },
+  { key: "up", label: "UP", desc: "넓은 보드 · 짝이 막히면(교착) 최하단에서 한 줄 상승" },
   { key: "victory", label: "승리", desc: "승리 카드 짝을 먼저 맞추면 즉시 1위" },
   { key: "shanghai", label: "상하이", desc: "겹층 — 위층을 걷어야 아래층 선택 가능" },
 ];
 
-export const ROLLING_INTERVAL_MS = 3000; // PRD §4.3
-export const UP_RISE_INTERVAL_MS = 4500; // UP 모드: 타이머마다 한 줄씩 위로 상승
-export const COMBO_WINDOW_MS = 3000; // 콤보 지속시간 3초 (플레이 피드백 반영 — 2초는 콤보 잇기 어려움)
+export const ROLLING_INTERVAL_MS = 4000; // PRD §4.3 (넷마블 '롤링4각' — 3→4초, 바깥 테두리 시계 회전)
+export const COMBO_WINDOW_MS = 3000; // 콤보 지속시간 3초 (플레이 피드백 반영 — 2초는 콤보 잇기 어려워)
 export const FINISH_GRACE_MS = 10000; // 1위 확정 후 10초 유예
 export const DEX_REGISTER_COUNT = 10; // 동일 카드 누적 10회 제거 시 도감 등록
 export const ITEM_QUOTA: Record<ItemType, number> = { search: 3, shuffle: 3, scissor: 1 };
@@ -158,7 +157,8 @@ export interface ClientToServer {
   "tile:match": (p: { tileA: number; tileB: number }, ack?: (r: Ack<Record<string, never>>) => void) => void;
   "item:use": (
     p: { type: ItemType; tiles?: [number, number] }, // scissor 는 대상 짝 지정
-    ack: (r: Ack<{ highlight?: [number, number] }>) => void
+    // items: 사용 수신 시점에 소모된 서버 권위 잔량 (클라 낙관적 차감의 최종 동기화용)
+    ack: (r: Ack<{ highlight?: [number, number]; items?: Record<ItemType, number> }>) => void
   ) => void;
   "combo:power": (p: { cardId: string }, ack: (r: Ack<Record<string, never>>) => void) => void;
   "dex:get": (ack: (r: Ack<{ entries: DexEntry[]; progress: DexProgress; sbts: SbtBadge[] }>) => void) => void;

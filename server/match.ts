@@ -23,7 +23,6 @@ import { finalScore, matchScore, rankPlayers, xpFor, type RankInput } from "../s
 import {
   ITEM_QUOTA,
   ROLLING_INTERVAL_MS,
-  UP_RISE_INTERVAL_MS,
   type Ack,
   type BoardPatch,
   type ComboPower,
@@ -49,6 +48,7 @@ interface PState {
   score: number;
   items: Record<ItemType, number>; // 남은 아이템 (서치3/섞기3/가위1)
   cleared: boolean;
+  stuck: boolean; // UP 모드: 예비 줄 소진/최상단 도달 + 교착으로 더 진행 불가 (클리어 불가 확정)
   clearTimeMs: number;
   met: Map<string, { card: GameCard; count: number }>; // 이번 판 제거 카드 집계 (짝 단위)
   dexNewly: GameCard[]; // 이번 판으로 도감에 새로 등록된 카드
@@ -61,7 +61,6 @@ export class Match {
   private startedAt = Date.now();
   private states = new Map<string, PState>();
   private rollingTimer: ReturnType<typeof setInterval> | null = null;
-  private upTimer: ReturnType<typeof setInterval> | null = null;
   private finishTimer: ReturnType<typeof setTimeout> | null = null;
   private finishingAnnounced = false;
   private clearOrder = 0; // 클리어 시각 순 순번
@@ -79,6 +78,7 @@ export class Match {
         score: 0,
         items: { ...ITEM_QUOTA },
         cleared: false,
+        stuck: false,
         clearTimeMs: 0,
         met: new Map(),
         dexNewly: [],
@@ -104,13 +104,19 @@ export class Match {
         ...(this.room.config.mapMode === "up" ? { reserveRows: st.board.reserve.length } : {}),
       });
     }
-    // 롤링 모드: ROLLING_INTERVAL_MS 마다 각 플레이어 보드를 우측으로 순환 이동
+    // 롤링 모드: ROLLING_INTERVAL_MS 마다 각 플레이어 보드 바깥 테두리를 시계방향 회전
     if (this.room.config.mapMode === "rolling") {
       this.rollingTimer = setInterval(() => this.tickRolling(), ROLLING_INTERVAL_MS);
     }
-    // UP 모드: UP_RISE_INTERVAL_MS 마다 각 플레이어 보드를 한 줄 위로 상승
+    // UP 모드: 연속 타이머 상승 폐지 — 상승은 '교착(연결 가능한 짝 0)'일 때만.
+    // 게임 시작 직후 교착 검사(생성이 최소 한 수를 보장하므로 통상 no-op, 방어적).
     if (this.room.config.mapMode === "up") {
-      this.upTimer = setInterval(() => this.tickUp(), UP_RISE_INTERVAL_MS);
+      for (const pl of this.room.players) {
+        const st = this.states.get(pl.playerId);
+        if (st && st.board.tiles.some((t) => !t.removed) && !hasMove(st.board)) {
+          this.handleUpDeadlock(pl.playerId, st);
+        }
+      }
     }
   }
 
@@ -119,10 +125,6 @@ export class Match {
     if (this.rollingTimer) {
       clearInterval(this.rollingTimer);
       this.rollingTimer = null;
-    }
-    if (this.upTimer) {
-      clearInterval(this.upTimer);
-      this.upTimer = null;
     }
     if (this.finishTimer) {
       clearTimeout(this.finishTimer);
@@ -227,64 +229,79 @@ export class Match {
     ack({ ok: true, data: {} });
   }
 
-  /** item:use — 서치/섞기/가위 (ITEM_QUOTA 차감, 소진 시 error) */
+  /**
+   * item:use — 서치/섞기/가위. 사용 수신 시점에 소모 확정(클라 낙관적 즉시 차감과 정합).
+   * 모든 ack 에 서버 권위 잔량 items 를 실어 최종 동기화(이중 차감 방지). 가위는 유효 대상일 때만 소모.
+   */
   handleItemUse(
     playerId: string,
     p: { type: ItemType; tiles?: [number, number] },
-    ack: (r: Ack<{ highlight?: [number, number] }>) => void
+    ack: (r: Ack<{ highlight?: [number, number]; items?: Record<ItemType, number> }>) => void
   ): void {
     const st = this.guard(playerId, ack);
     if (!st) return;
     const type = p?.type;
     if (type !== "search" && type !== "shuffle" && type !== "scissor") {
-      ack({ ok: false, error: "알 수 없는 아이템입니다" });
+      ack({ ok: false, error: "알 수 없는 아이템입니다", data: { items: { ...st.items } } });
       return;
     }
     if (st.items[type] <= 0) {
-      ack({ ok: false, error: "아이템을 모두 사용했습니다" });
+      ack({ ok: false, error: "아이템을 모두 사용했습니다", data: { items: { ...st.items } } });
       return;
     }
 
     if (type === "search") {
-      // 서치: 매칭 가능한 짝 1쌍 반환 (본인 ack 만 — 브로드캐스트 없음)
-      const hint = findHint(st.board);
-      if (!hint) {
-        ack({ ok: false, error: "매칭 가능한 짝이 없습니다" });
-        return;
-      }
+      // 서치: 사용 수신 즉시 소모 + 매칭 가능한 짝 1쌍 반환 (본인 ack 만)
       st.items.search--;
-      ack({ ok: true, data: { highlight: [hint[0].tileId, hint[1].tileId] } });
+      const hint = findHint(st.board);
+      ack({
+        ok: !!hint,
+        ...(hint ? {} : { error: "매칭 가능한 짝이 없습니다" }),
+        data: {
+          ...(hint ? { highlight: [hint[0].tileId, hint[1].tileId] as [number, number] } : {}),
+          items: { ...st.items },
+        },
+      });
       return;
     }
 
     if (type === "shuffle") {
-      // 섞기: 남은 타일 재배치 (카드 종류/개수 유지)
+      // 섞기: 사용 수신 즉시 소모 + 남은 타일 재배치 (카드 종류/개수 유지)
       st.items.shuffle--;
       reshuffle(st.board);
       this.emitBoard(playerId, st, "shuffle");
-      ack({ ok: true, data: {} });
+      // 셔플 후에도 교착이면(희귀) UP 은 상승/종료로 해소 (교착 검사 시점)
+      if (
+        this.room.config.mapMode === "up" &&
+        st.board.tiles.some((t) => !t.removed) &&
+        !hasMove(st.board)
+      ) {
+        this.handleUpDeadlock(playerId, st);
+      }
+      ack({ ok: true, data: { items: { ...st.items } } });
       return;
     }
 
-    // 가위: 같은 카드면 경로 검증 없이 강제 제거 (콤보 카운트 반영 — FEATURE_SPEC 2.7)
+    // 가위: 같은 카드면 경로 검증 없이 강제 제거 (콤보 카운트 반영 — FEATURE_SPEC 2.7).
+    // 무효/승리 대상은 소모하지 않고 잔량 그대로 반환 → 클라 낙관적 차감이 복구된다.
     const tiles = p?.tiles;
     if (!Array.isArray(tiles) || tiles.length !== 2) {
-      ack({ ok: false, error: "가위 대상 두 타일을 지정하세요" });
+      ack({ ok: false, error: "가위 대상 두 타일을 지정하세요", data: { items: { ...st.items } } });
       return;
     }
     const a = st.board.tiles.find((t) => t.tileId === tiles[0]);
     const b = st.board.tiles.find((t) => t.tileId === tiles[1]);
     if (!a || !b || a === b || a.removed || b.removed) {
-      ack({ ok: false, error: "대상 타일이 유효하지 않습니다" });
+      ack({ ok: false, error: "대상 타일이 유효하지 않습니다", data: { items: { ...st.items } } });
       return;
     }
     if (a.matchKey !== b.matchKey) {
-      ack({ ok: false, error: "같은 카드만 제거할 수 있습니다" });
+      ack({ ok: false, error: "같은 카드만 제거할 수 있습니다", data: { items: { ...st.items } } });
       return;
     }
     // 승리 "승" 카드는 가위 대상에서 제외 — 경로 매칭으로만 승리하도록(플레이 피드백).
     if (a.victory || b.victory) {
-      ack({ ok: false, error: "승리 카드는 가위로 제거할 수 없습니다" });
+      ack({ ok: false, error: "승리 카드는 가위로 제거할 수 없습니다", data: { items: { ...st.items } } });
       return;
     }
     st.items.scissor--;
@@ -309,7 +326,7 @@ export class Match {
       });
     }
     this.afterRemoval(playerId, st, [a, b]);
-    ack({ ok: true, data: {} });
+    ack({ ok: true, data: { items: { ...st.items } } });
   }
 
   // ── 내부 로직 ──────────────────────────────────────────────
@@ -325,10 +342,14 @@ export class Match {
       ack?.({ ok: false, error: "이미 클리어했습니다" });
       return null;
     }
+    if (st.stuck) {
+      ack?.({ ok: false, error: "더 진행할 수 없습니다" });
+      return null;
+    }
     return st;
   }
 
-  /** 제거 이벤트 공통 후처리: 승리 판정 → 클리어 판정 → 교착 재셔플 → 진행도 브로드캐스트 (UP 상승은 tickUp 전담) */
+  /** 제거 이벤트 공통 후처리: 승리 판정 → 클리어 판정 → 교착 해소(UP 상승·그 외 재셔플) → 진행도 브로드캐스트 */
   private afterRemoval(playerId: string, st: PState, removedTiles: Tile[]): void {
     if (this.ended) return;
 
@@ -349,14 +370,10 @@ export class Match {
       if (!this.finishingAnnounced) {
         this.finishingAnnounced = true;
         this.room.state = "finishing";
-        // 롤링/UP 등 매치 타이머는 finishing 진입 시 정리 (지시 사항)
+        // 롤링 등 매치 타이머는 finishing 진입 시 정리 (지시 사항)
         if (this.rollingTimer) {
           clearInterval(this.rollingTimer);
           this.rollingTimer = null;
-        }
-        if (this.upTimer) {
-          clearInterval(this.upTimer);
-          this.upTimer = null;
         }
         const winner = this.room.players.find((pl) => pl.playerId === playerId);
         this.deps.io.to(this.room.roomId).emit("match:finishing", {
@@ -366,19 +383,46 @@ export class Match {
         });
         this.finishTimer = setTimeout(() => this.endMatch(), this.deps.finishGraceMs);
       }
-      // 유예 중 전원 클리어 시 조기 종료 (순위는 클리어 시각 순)
-      if ([...this.states.values()].every((s) => s.cleared)) this.endMatch();
+      // 유예 중 남은 전원이 클리어/종료(stuck)면 조기 종료 (무한 대기 방지)
+      if ([...this.states.values()].every((s) => s.cleared || s.stuck)) this.endMatch();
       return;
     }
 
-    // UP 모드 상승은 타이머(tickUp)가 전담. 제거로 교착이 되면 아래 교착 재셔플이 처리한다.
-    // 교착 감지: 매 제거 후 수가 없으면 자동 재셔플
+    // 교착(연결 가능한 짝 0) 감지 — UP 은 상승/종료로, 그 외 모드는 자동 재셔플로 해소
     if (!hasMove(st.board)) {
+      if (this.room.config.mapMode === "up") {
+        this.handleUpDeadlock(playerId, st); // 상승 emit·종료까지 내부 처리
+        return;
+      }
       reshuffle(st.board);
       this.emitBoard(playerId, st, "reshuffle");
     }
 
     this.broadcastProgress(playerId, st);
+  }
+
+  /**
+   * UP 교착 해소: 예비 줄이 있고 상승 여지가 있으면 1줄 상승(최하단 주입 줄은 하단 테두리로 항상 연결 가능 → 교착 해소).
+   * 최상단까지 차오르거나(blocked) 예비 줄 소진(empty) 상태에서 교착이면 이 플레이어는 클리어 불가로 확정한다.
+   */
+  private handleUpDeadlock(playerId: string, st: PState): void {
+    const res = upRise(st.board);
+    if (res === "ok") {
+      if (!hasMove(st.board)) reshuffle(st.board); // 희귀 방어 — 주입 후에도 막히면 재셔플
+      this.emitBoard(playerId, st, "up");
+      this.broadcastProgress(playerId, st);
+      return;
+    }
+    // "blocked"(최상단 도달) / "empty"(예비 줄 소진) + 교착 → 클리어 불가 확정
+    this.markUpStuck(playerId, st);
+  }
+
+  /** UP: 더 상승할 수 없는 교착 → 미클리어로 확정. 남은 전원이 클리어/종료면 매치 종료(무한 대기 방지). */
+  private markUpStuck(playerId: string, st: PState): void {
+    if (st.cleared || st.stuck) return;
+    st.stuck = true;
+    this.broadcastProgress(playerId, st);
+    if ([...this.states.values()].every((s) => s.cleared || s.stuck)) this.endMatch();
   }
 
   /** 도감·이번 판 집계 반영. 이번에 도감 등록된 cardId 목록을 반환. */
@@ -408,24 +452,6 @@ export class Match {
       } else {
         this.emitBoard(pid, st, "rolling");
       }
-    }
-  }
-
-  /** UP 틱: 각 미클리어 플레이어 보드를 한 줄 위로 상승 (최상단 점유/reserve 소진 시 상승 없음) */
-  private tickUp(): void {
-    if (this.ended || this.room.state !== "playing") return;
-    for (const [pid, st] of this.states) {
-      if (st.cleared) continue;
-      const res = upRise(st.board);
-      if (res !== "ok") continue; // "blocked"/"empty" → 상승 없음
-      // 상승 후 교착이면 재셔플로 구제, 아니면 상승 반영
-      if (st.board.tiles.some((t) => !t.removed) && !hasMove(st.board)) {
-        reshuffle(st.board);
-        this.emitBoard(pid, st, "reshuffle");
-      } else {
-        this.emitBoard(pid, st, "up");
-      }
-      this.broadcastProgress(pid, st);
     }
   }
 

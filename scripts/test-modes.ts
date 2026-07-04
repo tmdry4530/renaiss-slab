@@ -1,6 +1,6 @@
 // 맵 모드(롤링/UP/승리/상하이)·마스크·콤보·점수·시드 재현성 테스트 (shared/)
 import {
-  generateBoard, toTileStates, isTileFree, rollRight, upRise, findHint, hasMove,
+  generateBoard, toTileStates, isTileFree, rollRight, borderRingCells, upRise, findHint, hasMove,
   occupiedGrid, makeMask, MASK_KINDS, DIFFICULTIES, UP_INITIAL_ROWS, validateMatch, type Board,
 } from "../shared/board.ts";
 import { ComboTracker, comboPowerAt, nextCombo, applyComboPower } from "../shared/combo.ts";
@@ -55,26 +55,39 @@ console.log("[마스크]");
   check("mask:'rect' 강제 옵션", forced.maskKind === "rect" && forced.tiles.length === 48);
 }
 
-// ── 3) 롤링: 행 순환·짝수 유지 ───────────────────────────────
+// ── 3) 롤링: 바깥 테두리 시계방향 링 회전·내부 고정 ──────────
 console.log("[롤링]");
 {
   const b = generateBoard(pool, "normal", 11, { mapMode: "rolling", mask: "rect" });
-  // 한 쌍 제거해 빈 칸을 만들어 두고 굴린다
+  // 한 쌍 제거해 빈 칸(홀)을 만들어 두고 굴린다 — 홀도 사이클에 포함되어 함께 회전
   const h = findHint(b)!;
   h[0].removed = true; h[1].removed = true;
-  const before = b.tiles.filter((t) => !t.removed).map((t) => ({ id: t.tileId, r: t.r, c: t.c }));
+  const snap = b.tiles.filter((t) => t.layer === 0).map((t) => ({ id: t.tileId, r: t.r, c: t.c, removed: t.removed }));
+  const posBefore = new Set(snap.map((p) => p.r + "," + p.c));
+  const liveCountBefore = snap.filter((p) => !p.removed).length;
   const beforeCount = countBy(b.tiles.filter((t) => !t.removed), (t) => t.matchKey);
+  const ring = borderRingCells(b);
+  const ringSet = new Set(ring.map((p) => p.r + "," + p.c));
   rollRight(b);
   const live = b.tiles.filter((t) => !t.removed);
-  check("롤링 후 타일 수 불변", live.length === before.length);
+  const byId = new Map(b.tiles.map((t) => [t.tileId, t]));
+  check("롤링 후 미제거 타일 수 불변", live.length === liveCountBefore);
   check("롤링 후 matchKey 짝수 유지", [...countBy(live, (t) => t.matchKey).values()].every((n) => n % 2 === 0) && JSON.stringify([...beforeCount].sort()) === JSON.stringify([...countBy(live, (t) => t.matchKey)].sort()));
-  const byId = new Map(live.map((t) => [t.tileId, t]));
-  check("각 타일이 오른쪽으로 1칸 순환(wrap)", before.every((p) => {
-    const t = byId.get(p.id)!;
-    return t.r === p.r && t.c === (p.c % b.cols) + 1; // rect: 유효 칸 = 1..cols
+  // 링 위 타일(제거 포함)은 시계방향으로 한 칸 이동: ring[i]에 있던 타일이 ring[i+1]로
+  check("바깥 테두리 타일이 시계방향 1칸 회전", ring.length >= 4 && ring.every((cell, i) => {
+    const src = snap.find((p) => p.r === cell.r && p.c === cell.c)!;
+    const dest = ring[(i + 1) % ring.length];
+    const t = byId.get(src.id)!;
+    return t.r === dest.r && t.c === dest.c;
   }));
-  check("롤링 후 좌표 충돌 없음", new Set(live.map((t) => t.r + "," + t.c)).size === live.length);
-  // 마스크 보드에서도 유효 칸 위 유지
+  // 내부(비테두리) 타일은 이동 없음
+  check("내부 타일은 고정(이동 없음)", snap.filter((p) => !ringSet.has(p.r + "," + p.c)).every((p) => {
+    const t = byId.get(p.id)!;
+    return t.r === p.r && t.c === p.c;
+  }));
+  check("롤링 후 좌표 충돌 없음", new Set(b.tiles.filter((t) => t.layer === 0).map((t) => t.r + "," + t.c)).size === snap.length);
+  check("롤링 후 점유 셀 집합 불변(순열)", new Set(b.tiles.filter((t) => t.layer === 0).map((t) => t.r + "," + t.c)).size === posBefore.size && [...posBefore].every((k) => b.tiles.some((t) => t.layer === 0 && t.r + "," + t.c === k)));
+  // 마스크 보드(도넛: 바깥 테두리만 회전)에서도 유효 칸 위 유지
   const bm = generateBoard(pool, "normal", 12, { mapMode: "rolling", mask: "donut" });
   rollRight(bm);
   check("마스크 보드 롤링: 유효 칸 위 유지", bm.tiles.filter((t) => !t.removed).every((t) => bm.mask[t.r - 1][t.c - 1]));
@@ -86,6 +99,7 @@ console.log("[UP]");
   const diff = DIFFICULTIES.find((d) => d.key === "normal")!;
   const b = generateBoard(pool, "normal", 21, { mapMode: "up" });
   check("UP 은 rect 마스크 강제(가정)", b.maskKind === "rect");
+  check("UP 보드 폭 강제 10(난이도 무관)", b.cols === 10 && b.cols !== diff.cols);
   check("reserve 줄 수 = 난이도 설정(normal=8)", b.reserve.length === diff.reserveRows && diff.reserveRows === 8);
   check("reserve 각 줄은 cols 장·줄 안에서 짝수", b.reserve.every((row) => row.length === b.cols && [...countBy(row, (c) => c.matchKey).values()].every((n) => n % 2 === 0)));
   // 초기엔 하단 UP_INITIAL_ROWS 줄만 배치, 상단은 빈 상태
