@@ -9,15 +9,26 @@ const OUT = resolve(dirname(fileURLToPath(import.meta.url)), "../public/data/car
 
 // 검색어를 늘리고 쿼리당 건수를 올려 일본어 카드 풀을 확장(플레이 피드백: 이미지 종류가 적음).
 // API limit 상한은 30(그 이상은 거부되어 빈 결과) — PER_QUERY 30 고정.
+// 쿼리를 대폭 확장해 풀 상한을 높인다(누적 모드라 실행할수록 커지고, 소진되면 자연히 정체).
 const QUERIES = {
   pokemon: [
     "charizard", "pikachu", "mewtwo", "umbreon", "eevee", "gyarados",
     "rayquaza", "lugia", "gengar", "blastoise", "venusaur", "mew",
     "snorlax", "dragonite", "sylveon", "greninja",
+    "charmander", "bulbasaur", "squirtle", "lucario", "garchomp", "tyranitar",
+    "metagross", "arceus", "giratina", "dialga", "palkia", "zacian",
+    "jolteon", "vaporeon", "flareon", "espeon", "glaceon", "leafeon",
+    "ho-oh", "entei", "raikou", "suicune", "celebi", "jirachi",
+    "darkrai", "gardevoir", "alakazam", "machamp", "salamence", "gengar",
+    "zapdos", "moltres", "articuno", "dragonite",
   ],
   "one-piece": [
     "luffy", "zoro", "nami", "ace", "sanji", "robin",
     "yamato", "kaido", "sabo", "chopper", "doflamingo", "katakuri",
+    "law", "shanks", "whitebeard", "roger", "rayleigh", "hancock",
+    "jinbe", "brook", "franky", "usopp", "bigmom", "blackbeard",
+    "crocodile", "mihawk", "garp", "marco", "oden", "kid",
+    "killer", "bonney", "smoker", "buggy", "perona", "bartolomeo",
   ],
 };
 const PER_QUERY = 30;

@@ -1,0 +1,49 @@
+name: prefetch-cards
+
+# 카드 풀 자동 누적: 주기적으로 Renaiss OS Index 를 프리페치해 새 카드를 card-pool.json 에
+# 누적(merge)하고, 실제로 커진 경우에만 커밋한다. 커밋 → main push → Railway 자동 배포.
+# 트리거가 push 가 아니므로(스케줄/수동) 이 워크플로의 커밋이 자신을 다시 트리거하지 않는다.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # 6시간마다 (UTC)
+  workflow_dispatch: {}     # 수동 실행 허용
+
+permissions:
+  contents: write           # card-pool.json 커밋/푸시
+
+concurrency:
+  group: prefetch-cards     # 겹침 방지
+  cancel-in-progress: false
+
+jobs:
+  prefetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 프리페치 스크립트는 node 내장 모듈(fetch/fs)만 사용 — 의존성 설치 불필요.
+      - name: Prefetch card pool (accumulate)
+        run: node scripts/prefetch-pool.mjs
+
+      - name: Commit & push if pool grew
+        run: |
+          if git diff --quiet -- public/data/card-pool.json; then
+            echo "카드 풀 변화 없음 — 커밋/배포 생략"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          COUNTS=$(node -e 'const p=require("./public/data/card-pool.json");process.stdout.write("pk "+p.counts.pokemon+", op "+p.counts["one-piece"]+" (총 "+p.cards.length+")")')
+          git add public/data/card-pool.json
+          git commit -m "chore(cards): 카드 풀 자동 누적 프리페치 — ${COUNTS}"
+          # 스케줄 중 다른 푸시와 충돌 대비 rebase 후 푸시
+          git pull --rebase origin main || true
+          git push origin HEAD:main
