@@ -532,6 +532,13 @@ h2 { font-size: 16px; margin: 0; }
     linear-gradient(160deg, #7fe6c4 0%, #1f9e78 45%, #0a3d2e 100%);
 }
 
+/* 맵 아이콘 스프라이트(PokeAPI 픽셀아트) — 축소·확대 시 계단현상 유지해 도트 느낌을 살린다.
+   MapSelect 프리셋 카드(48px)·Room 대기실 프리뷰(96px)에서 MapIcon 이 렌더. */
+.map-sprite {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
 /* 모드 배너 (콤보 파워 지정 / 가위) */
 .mode-banner {
   position: sticky; top: 8px; z-index: 25; margin: 0 auto 12px; width: fit-content; max-width: 92%;

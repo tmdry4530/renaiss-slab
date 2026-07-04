@@ -108,90 +108,146 @@ export function resolveDifficulty(d: DifficultyKey | Difficulty): Difficulty {
 
 // ── 마스크 (비사각형 맵 모양, PRD §6) ────────────────────────
 // 매 라운드 다양한 형태의 맵. true = 타일이 놓이는 유효 칸.
-// flame/fish/bolt 는 맵 테마 전용 마스크(shared/mapThemes.ts 로만 지정) — 시드 랜덤 선택 풀(MASK_KINDS)에는
+// 실루엣 종류(pikachu/charizard/crystal/star/skull/apple/fish)는 손으로 그린 비트맵(SILHOUETTES)을
+// 각 맵 크기에 맞춰 샘플링한 테마 전용 마스크(shared/mapThemes.ts 로만 지정) — 시드 랜덤 선택 풀(MASK_KINDS)에는
 // 넣지 않는다(기존 5종 랜덤 분포·테스트 유지, 테마 미지정 보드는 이전과 동일하게 동작).
-export type MaskKind = "rect" | "diamond" | "donut" | "cross" | "corners" | "flame" | "fish" | "bolt";
+export type MaskKind =
+  | "rect"
+  | "diamond"
+  | "donut"
+  | "cross"
+  | "corners"
+  | "pikachu"
+  | "charizard"
+  | "crystal"
+  | "star"
+  | "skull"
+  | "apple"
+  | "fish";
 export const MASK_KINDS: MaskKind[] = ["rect", "diamond", "donut", "cross", "corners"];
+
+// 손으로 그린 실루엣 비트맵('#'=타일, 그 외=빈칸). 각 테마 맵의 실제 보드 크기(초급 4×6·고급 8×10)에
+// 정확히 맞춰 작성했다. 요청 크기가 다르면 sampleSilhouette 가 최근접(nearest-neighbor)으로 정합.
+// 모든 실루엣은 유효 칸 수를 짝수로 그렸고(makeMask 짝수 보정으로 한 번 더 방어), 흩어진 칸도 빈 칸을
+// 통한 경로 연결이 가능하도록 충분히 덩어리진 형태로 유지한다.
+const SILHOUETTES: Partial<Record<MaskKind, string[]>> = {
+  // 피카츄(상하이/8×10): 뾰족한 양 귀 + 둥근 몸통
+  pikachu: [
+    ".#......#.",
+    ".##....##.",
+    ".###..###.",
+    "..######..",
+    ".########.",
+    ".########.",
+    "..######..",
+    "...####...",
+  ],
+  // 리자몽(승리/8×10): 위로 솟는 불꽃 + 양 날개 힌트 + 넓은 몸통
+  charizard: [
+    "....##....",
+    "...####...",
+    "#..####..#",
+    "##.####.##",
+    "##########",
+    ".########.",
+    "..######..",
+    "...####...",
+  ],
+  // 뮤츠(일반/8×10): 사이킥 크리스탈(다이아몬드)
+  crystal: [
+    "....##....",
+    "...####...",
+    "..######..",
+    ".########.",
+    ".########.",
+    "..######..",
+    "...####...",
+    "....##....",
+  ],
+  // 루피(승리/8×10): 오각 별
+  star: [
+    "....##....",
+    "....##....",
+    ".########.",
+    "..######..",
+    "..######..",
+    ".##....##.",
+    ".#......#.",
+    "..........",
+  ],
+  // 해적깃발(일반/4×6): 해골 — 눈 구멍 두 개 + 턱뼈
+  skull: [".####.", "#.##.#", "######", ".#..#."],
+  // 악마의 열매(일반/4×6): 둥근 과실
+  apple: [".####.", "######", "######", ".####."],
+  // 나미(상하이/4×6): 물고기 — 둥근 몸통 + 오른쪽 꼬리 지느러미
+  fish: [".####.", "####.#", "####.#", ".####."],
+};
+
+// 실루엣 비트맵을 요청 (rows×cols) 로 최근접 샘플링. 설계 크기와 같으면 1:1(항등).
+function sampleSilhouette(pattern: string[], rows: number, cols: number): boolean[][] {
+  const P = pattern.length;
+  const Q = Math.max(...pattern.map((s) => s.length));
+  const m = Array.from({ length: rows }, () => Array<boolean>(cols).fill(false));
+  for (let r = 0; r < rows; r++) {
+    const pr = P === rows ? r : Math.min(P - 1, Math.floor((r * P) / rows));
+    const line = pattern[pr] ?? "";
+    for (let c = 0; c < cols; c++) {
+      const pc = Q === cols ? c : Math.min(Q - 1, Math.floor((c * Q) / cols));
+      m[r][c] = line[pc] === "#";
+    }
+  }
+  return m;
+}
 
 /** rows×cols 마스크 생성. 유효 칸 수가 항상 짝수가 되도록 보정한다. */
 export function makeMask(kind: MaskKind, rows: number, cols: number): boolean[][] {
-  const m = Array.from({ length: rows }, () => Array<boolean>(cols).fill(false));
-  const cr = (rows - 1) / 2;
-  const cc = (cols - 1) / 2;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      switch (kind) {
-        case "rect":
-          m[r][c] = true;
-          break;
-        case "diamond":
-          // 마름모: 중심 거리의 정규화 합 ≤ 1 (+ 여유)
-          m[r][c] = Math.abs(r - cr) / (rows / 2) + Math.abs(c - cc) / (cols / 2) <= 1.001;
-          break;
-        case "donut": {
-          // 도넛: 가운데 구멍 뚫린 사각형
-          const hr = Math.max(1, Math.floor(rows / 3));
-          const hc = Math.max(2, Math.floor(cols / 3));
-          const r0 = Math.floor((rows - hr) / 2);
-          const c0 = Math.floor((cols - hc) / 2);
-          const inHole = r >= r0 && r < r0 + hr && c >= c0 && c < c0 + hc;
-          m[r][c] = !inHole;
-          break;
-        }
-        case "cross": {
-          // 십자: 중앙 가로 밴드 ∪ 중앙 세로 밴드
-          const bandR = Math.max(1, Math.floor(rows / 3));
-          const bandC = Math.max(1, Math.floor(cols / 3));
-          const inRowBand = r >= bandR && r <= rows - 1 - bandR;
-          const inColBand = c >= bandC && c <= cols - 1 - bandC;
-          m[r][c] = inRowBand || inColBand;
-          break;
-        }
-        case "corners": {
-          // 모서리 깎임: 네 귀퉁이 k×k 제거
-          const k = Math.max(1, Math.floor(Math.min(rows, cols) / 3));
-          const corner =
-            (r < k && c < k) ||
-            (r < k && c >= cols - k) ||
-            (r >= rows - k && c < k) ||
-            (r >= rows - k && c >= cols - k);
-          m[r][c] = !corner;
-          break;
-        }
-        case "flame": {
-          // 불꽃(테마 전용): 아래(밑동)일수록 넓고 위(불씨 끝)로 갈수록 좁아지는 삼각/불꽃 실루엣
-          const t = rows <= 1 ? 0 : r / (rows - 1); // 0(맨 위)~1(맨 아래)
-          const widthFrac = 0.28 + 0.62 * t;
-          const width = Math.max(1, Math.round(cols * widthFrac));
-          const c0 = Math.floor((cols - width) / 2);
-          m[r][c] = c >= c0 && c < c0 + width;
-          break;
-        }
-        case "fish": {
-          // 물고기(테마 전용): 좌측 둥근 몸통(타원) + 우측으로 갈수록 좁아지는 꼬리
-          const bodyEnd = Math.max(2, Math.round(cols * 0.62));
-          if (c < bodyEnd) {
-            const nr = (r - cr) / (rows / 2 || 1);
-            const nc = (c - bodyEnd / 2) / (bodyEnd / 2 || 1);
-            m[r][c] = nr * nr + nc * nc <= 1.05;
-          } else {
-            const tailLen = Math.max(1, cols - bodyEnd);
-            const tt = (c - bodyEnd) / tailLen; // 0..~1
-            const halfH = Math.max(0.5, (rows / 2) * (1 - tt * 0.85));
-            m[r][c] = Math.abs(r - cr) <= halfH;
+  const sil = SILHOUETTES[kind];
+  const m = sil
+    ? sampleSilhouette(sil, rows, cols)
+    : Array.from({ length: rows }, () => Array<boolean>(cols).fill(false));
+  if (!sil) {
+    const cr = (rows - 1) / 2;
+    const cc = (cols - 1) / 2;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        switch (kind) {
+          case "rect":
+            m[r][c] = true;
+            break;
+          case "diamond":
+            // 마름모: 중심 거리의 정규화 합 ≤ 1 (+ 여유)
+            m[r][c] = Math.abs(r - cr) / (rows / 2) + Math.abs(c - cc) / (cols / 2) <= 1.001;
+            break;
+          case "donut": {
+            // 도넛: 가운데 구멍 뚫린 사각형
+            const hr = Math.max(1, Math.floor(rows / 3));
+            const hc = Math.max(2, Math.floor(cols / 3));
+            const r0 = Math.floor((rows - hr) / 2);
+            const c0 = Math.floor((cols - hc) / 2);
+            const inHole = r >= r0 && r < r0 + hr && c >= c0 && c < c0 + hc;
+            m[r][c] = !inHole;
+            break;
           }
-          break;
-        }
-        case "bolt": {
-          // 번개(테마 전용): 상단/하단이 좌우로 어긋나는 지그재그 굵은 띠
-          const segH = Math.max(1, Math.floor(rows / 3));
-          const seg = Math.floor(r / segH) % 2; // 0,1 교대
-          const w = Math.max(2, Math.floor(cols * 0.34));
-          const leftPos = Math.max(0, Math.floor(cols * 0.12));
-          const rightPos = Math.min(cols - w, Math.max(0, cols - Math.floor(cols * 0.12) - w));
-          const c0 = seg === 0 ? rightPos : leftPos;
-          m[r][c] = c >= c0 && c < c0 + w;
-          break;
+          case "cross": {
+            // 십자: 중앙 가로 밴드 ∪ 중앙 세로 밴드
+            const bandR = Math.max(1, Math.floor(rows / 3));
+            const bandC = Math.max(1, Math.floor(cols / 3));
+            const inRowBand = r >= bandR && r <= rows - 1 - bandR;
+            const inColBand = c >= bandC && c <= cols - 1 - bandC;
+            m[r][c] = inRowBand || inColBand;
+            break;
+          }
+          case "corners": {
+            // 모서리 깎임: 네 귀퉁이 k×k 제거
+            const k = Math.max(1, Math.floor(Math.min(rows, cols) / 3));
+            const corner =
+              (r < k && c < k) ||
+              (r < k && c >= cols - k) ||
+              (r >= rows - k && c < k) ||
+              (r >= rows - k && c >= cols - k);
+            m[r][c] = !corner;
+            break;
+          }
         }
       }
     }

@@ -16,27 +16,64 @@ export interface MapPreset {
   id: string;
   name: string; // 테마 맵 이름
   emoji: string;
+  iconUrl?: string; // 포켓몬 맵: PokeAPI 스프라이트 URL(있으면 이모지 대신 표시, 로드 실패 시 이모지 폴백)
   mapMode: MapMode;
   difficulty: DifficultyKey; // easy=초급 / normal=중급 / hard=고급
   game: GameSel; // 포켓몬 | 원피스
   theme: string; // 배경/보드모양 테마 키 (= id)
 }
 
+// PokeAPI 스프라이트(픽셀아트, 투명 배경, 96×96 원본). 포켓몬 맵 아이콘에만 사용 — 원피스 맵은 이모지 유지.
+const POKE_SPRITE = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/";
+const POKE_ITEM = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/";
+
 export const MAP_PRESETS: MapPreset[] = [
   { id: "straw-hat",    name: "밀짚모자",   emoji: "👒", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "straw-hat" },
   { id: "devil-fruit",  name: "악마의 열매", emoji: "🍎", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "devil-fruit" },
-  { id: "monster-ball", name: "몬스터볼",   emoji: "🔴", mapMode: "up",       difficulty: "easy", game: "pokemon", theme: "monster-ball" },
-  { id: "pikachu",      name: "피카츄",     emoji: "⚡", mapMode: "shanghai", difficulty: "hard", game: "pokemon", theme: "pikachu" },
-  { id: "charizard",    name: "리자몽",     emoji: "🔥", mapMode: "victory",  difficulty: "hard", game: "pokemon", theme: "charizard" },
+  { id: "monster-ball", name: "몬스터볼",   emoji: "🔴", iconUrl: POKE_ITEM + "poke-ball.png", mapMode: "up",       difficulty: "easy", game: "pokemon", theme: "monster-ball" },
+  { id: "pikachu",      name: "피카츄",     emoji: "⚡", iconUrl: POKE_SPRITE + "25.png",  mapMode: "shanghai", difficulty: "hard", game: "pokemon", theme: "pikachu" },
+  { id: "charizard",    name: "리자몽",     emoji: "🔥", iconUrl: POKE_SPRITE + "6.png",   mapMode: "victory",  difficulty: "hard", game: "pokemon", theme: "charizard" },
   { id: "jolly-roger",  name: "해적깃발",   emoji: "☠️", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "jolly-roger" },
-  { id: "bulbasaur",    name: "이상해씨",   emoji: "🌿", mapMode: "rolling",  difficulty: "easy", game: "pokemon", theme: "bulbasaur" },
-  { id: "squirtle",     name: "꼬북이",     emoji: "💧", mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "squirtle" },
+  { id: "bulbasaur",    name: "이상해씨",   emoji: "🌿", iconUrl: POKE_SPRITE + "1.png",   mapMode: "rolling",  difficulty: "easy", game: "pokemon", theme: "bulbasaur" },
+  { id: "squirtle",     name: "꼬북이",     emoji: "💧", iconUrl: POKE_SPRITE + "7.png",   mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "squirtle" },
   { id: "luffy",        name: "루피",       emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "luffy" },
   { id: "nami",         name: "나미",       emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "nami" },
-  { id: "mewtwo",       name: "뮤츠",       emoji: "💜", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" },
+  { id: "mewtwo",       name: "뮤츠",       emoji: "💜", iconUrl: POKE_SPRITE + "150.png", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" },
   { id: "chopper",      name: "초파",       emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" },
   { id: "going-merry",  name: "고잉메리호", emoji: "⛵", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "going-merry" },
 ];
+
+// 맵 아이콘: iconUrl(포켓몬 스프라이트)이 있으면 픽셀아트 이미지로, 로드 실패(onError)나 미지정이면 이모지로.
+// MapSelect 프리셋 카드와 Room 대기실 프리뷰가 공용으로 쓴다(폴백 상태를 인스턴스별로 유지).
+export function MapIcon({
+  iconUrl,
+  emoji,
+  name,
+  size,
+}: {
+  iconUrl?: string;
+  emoji: string;
+  name?: string;
+  size: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (iconUrl && !failed) {
+    return (
+      <img
+        className="map-sprite"
+        src={iconUrl}
+        alt={name ?? ""}
+        loading="lazy"
+        width={size}
+        height={size}
+        draggable={false}
+        onError={() => setFailed(true)}
+        style={{ display: "block", margin: "0 auto", objectFit: "contain" }}
+      />
+    );
+  }
+  return <span style={{ display: "block", fontSize: size, lineHeight: 1 }}>{emoji}</span>;
+}
 
 // 맵 난이도 라벨(초급/중급/고급) — 게임 난이도 라벨(쉬움/보통/어려움)과 구분
 export const mapDiffLabel = (d: DifficultyKey): string =>
@@ -185,7 +222,9 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
                   boxShadow: on ? "0 0 0 3px rgba(245,158,11,.18)" : "none",
                 }}
               >
-                <div style={{ fontSize: 40, lineHeight: 1, margin: "6px 0 12px" }}>{p.emoji}</div>
+                <div style={{ margin: "6px 0 12px" }}>
+                  <MapIcon iconUrl={p.iconUrl} emoji={p.emoji} name={p.name} size={48} />
+                </div>
                 <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>
                   <span style={{ color: "var(--accent)" }}>[{modeLabel(p.mapMode)}]</span> {p.name}
                 </div>

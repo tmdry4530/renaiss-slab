@@ -5,7 +5,8 @@ import {
 } from "../shared/board.ts";
 import { ComboTracker, comboPowerAt, nextCombo, applyComboPower } from "../shared/combo.ts";
 import { matchScore, finalScore, xpFor, rankPlayers, settlementScore } from "../shared/score.ts";
-import { COMBO_WINDOW_MS } from "../shared/protocol.ts";
+import { COMBO_WINDOW_MS, type DifficultyKey, type MapMode } from "../shared/protocol.ts";
+import { maskForTheme } from "../shared/mapThemes.ts";
 import { findPath } from "../shared/shisen.ts";
 import { readFileSync } from "node:fs";
 
@@ -278,6 +279,52 @@ console.log("[점수·순위]");
   check("클리어자 finishTime 순 우선", ranks[0].playerId === "d" && ranks[1].playerId === "b");
   check("미클리어자 remaining ↑ → score ↓", ranks[2].playerId === "e" && ranks[3].playerId === "c" && ranks[4].playerId === "a");
   check("rank 1..N 부여", ranks.map((r) => r.rank).join(",") === "1,2,3,4,5");
+}
+
+// ── 9) 테마 맵 실루엣/마스크: 13개 맵 각각 실제 mode+difficulty 로 다회 생성 검증 ──
+// (a) throw 없음 (b) 마스크 유효 칸·타일 수 짝수 (c) 항상 최소 한 수(풀이가능) (d) layer0 타일이 마스크 위.
+// MAP_PRESETS(=.tsx, React) 를 Node 테스트에 끌어오지 않도록 theme→(mode,difficulty) 를 여기서 미러링한다.
+console.log("[테마 맵 실루엣]");
+{
+  const THEME_MAPS: { theme: string; mode: MapMode; diff: DifficultyKey; sil: boolean }[] = [
+    { theme: "straw-hat",    mode: "rolling",  diff: "easy", sil: false }, // 롤링 — donut(링)
+    { theme: "devil-fruit",  mode: "normal",   diff: "easy", sil: true },  // 일반 — apple 실루엣
+    { theme: "monster-ball", mode: "up",       diff: "easy", sil: false }, // UP — rect 강제
+    { theme: "pikachu",      mode: "shanghai", diff: "hard", sil: true },  // 상하이 — pikachu 실루엣
+    { theme: "charizard",    mode: "victory",  diff: "hard", sil: true },  // 승리 — charizard 실루엣
+    { theme: "jolly-roger",  mode: "normal",   diff: "easy", sil: true },  // 일반 — skull 실루엣
+    { theme: "bulbasaur",    mode: "rolling",  diff: "easy", sil: false }, // 롤링 — rect
+    { theme: "squirtle",     mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
+    { theme: "luffy",        mode: "victory",  diff: "hard", sil: true },  // 승리 — star 실루엣
+    { theme: "nami",         mode: "shanghai", diff: "easy", sil: true },  // 상하이 — fish 실루엣
+    { theme: "mewtwo",       mode: "normal",   diff: "hard", sil: true },  // 일반 — crystal 실루엣
+    { theme: "chopper",      mode: "rolling",  diff: "easy", sil: false }, // 롤링 — donut(링)
+    { theme: "going-merry",  mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
+  ];
+  const RUNS = 100;
+  for (const tm of THEME_MAPS) {
+    const mask = maskForTheme(tm.theme);
+    let ok = true, evenOk = true, moveOk = true, onMaskOk = true, firstErr = "";
+    for (let s = 0; s < RUNS && ok; s++) {
+      try {
+        const b = generateBoard(pool, tm.diff, 424242 + s * 7, {
+          mapMode: tm.mode,
+          ...(mask ? { mask } : {}),
+        });
+        const maskCount = b.mask.flat().filter(Boolean).length;
+        if (maskCount % 2 !== 0 || b.tiles.length % 2 !== 0) evenOk = false;
+        if (!hasMove(b)) moveOk = false;
+        if (!b.tiles.filter((t) => t.layer === 0).every((t) => b.mask[t.r - 1]?.[t.c - 1])) onMaskOk = false;
+      } catch (e) {
+        ok = false;
+        firstErr = String(e);
+      }
+    }
+    check(`${tm.theme}(${tm.mode}/${tm.diff}) ${RUNS}회 생성 throw 없음${firstErr ? " — " + firstErr : ""}`, ok);
+    check(`${tm.theme} 마스크 유효 칸·타일 수 짝수`, evenOk);
+    check(`${tm.theme} 항상 최소 한 수(풀이가능)`, moveOk);
+    check(`${tm.theme} layer0 타일이 마스크 위`, onMaskOk);
+  }
 }
 
 console.log("\n결과: " + pass + " pass, " + fail + " fail");

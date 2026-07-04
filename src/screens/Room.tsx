@@ -4,7 +4,7 @@ import { useState, type CSSProperties } from "react";
 import type { RoomConfig, RoomDetail } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
 import { errText, modeLabel, stateLabel } from "../labels.ts";
-import MapSelect, { MAP_PRESETS, mapDiffLabel, type MapPreset } from "./MapSelect.tsx";
+import MapSelect, { MAP_PRESETS, MapIcon, mapDiffLabel, type MapPreset } from "./MapSelect.tsx";
 
 interface Props {
   room: RoomDetail;
@@ -62,6 +62,7 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
 
   // 프리뷰: 선택 프리셋 or 현재 방 설정 기반(날조 없이 실제 모드/난이도 표기).
   const prevEmoji = picked?.emoji ?? "🗺️";
+  const prevIconUrl = picked?.iconUrl; // 포켓몬 맵이면 스프라이트, 아니면 undefined → 이모지 폴백
   const prevName = picked?.name ?? `${modeLabel(room.mapMode)} 맵`;
   const prevDiff = picked?.difficulty ?? room.difficulty;
   const prevTheme = picked?.theme ?? room.theme ?? "default";
@@ -141,11 +142,9 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
                     padding: "44px 0",
                     display: "grid",
                     placeItems: "center",
-                    fontSize: 96,
-                    lineHeight: 1,
                   }}
                 >
-                  {prevEmoji}
+                  <MapIcon iconUrl={prevIconUrl} emoji={prevEmoji} name={prevName} size={96} />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
                   <span className={`badge-diff ${prevDiff}`}>{mapDiffLabel(prevDiff)}</span>
