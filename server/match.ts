@@ -52,6 +52,7 @@ interface PState {
   items: Record<ItemType, number>; // 남은 아이템 (서치3/섞기3/가위1)
   cleared: boolean;
   stuck: boolean; // UP 모드: 예비 줄 소진/최상단 도달 + 교착으로 더 진행 불가 (클리어 불가 확정)
+  abandoned: boolean; // 게임 중 이탈(disconnect) 확정 — 종료조건 재평가에 포함(무한 대기 방지)
   clearTimeMs: number;
   met: Map<string, { card: GameCard; count: number }>; // 이번 판 제거 카드 집계 (짝 단위)
   dexNewly: GameCard[]; // 이번 판으로 도감에 새로 등록된 카드
@@ -61,13 +62,13 @@ interface PState {
 export class Match {
   readonly seed: number;
   ended = false;
-  private startedAt = Date.now();
+  private active = false; // beginBoard(카운트다운 종료) 후에만 true — 카운트다운 중 조작 차단
+  private startedAt = Date.now(); // beginBoard 에서 재설정 (클리어 시간에 카운트다운 3초 미포함)
   private states = new Map<string, PState>();
   private rollingTimer: ReturnType<typeof setInterval> | null = null;
   private finishTimer: ReturnType<typeof setTimeout> | null = null;
   private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private finishingAnnounced = false;
-  private clearOrder = 0; // 클리어 시각 순 순번
 
   constructor(private room: Room, poolCards: GameCard[], private deps: MatchDeps) {
     // 매치당 seed 하나 — 전 플레이어 동일 보드 (개인전: 같은 보드를 각자 풂)
@@ -87,6 +88,7 @@ export class Match {
         items: { ...ITEM_QUOTA },
         cleared: false,
         stuck: false,
+        abandoned: false,
         clearTimeMs: 0,
         met: new Map(),
         dexNewly: [],
@@ -112,6 +114,10 @@ export class Match {
 
   /** 각자에게 board:init 전송 + 모드별 타이머 기동 */
   private beginBoard(): void {
+    // 보드 시작 게이트: 여기서부터 tile:match/item:use/combo:power 허용 (카운트다운 중 조작 차단).
+    // 클리어 시간 기준점도 여기서 설정해 카운트다운 3초가 clearTimeMs 에 섞이지 않게 한다.
+    this.active = true;
+    this.startedAt = Date.now();
     for (const pl of this.room.players) {
       const st = this.states.get(pl.playerId);
       const sid = this.sockOf(pl.playerId);
@@ -185,7 +191,13 @@ export class Match {
     ack?: (r: Ack<Record<string, never>>) => void
   ): void {
     const st = this.guard(playerId, ack);
-    if (!st) return;
+    if (!st) {
+      // 클라는 tile:match 에 ack 콜백을 걸지 않는 경로가 있어, guard 로 막히면 브로드캐스트가 없어
+      // 클라 pending 이 고착될 수 있다 → 해당 플레이어에게 복구 신호(tile:rejected)도 emit(이중 안전).
+      const sid = this.sockOf(playerId);
+      if (sid) this.deps.io.to(sid).emit("tile:rejected", { reason: "unavailable" });
+      return;
+    }
     const res = validateMatch(st.board, p?.tileA ?? -1, p?.tileB ?? -1);
     if (!res.ok) {
       // 매칭 실패 → 콤보 0 리셋 (FEATURE_SPEC Open Issue 4 — 실패 시 리셋 가정, shared/combo.ts 참조)
@@ -266,8 +278,18 @@ export class Match {
     p: { type: ItemType; tiles?: [number, number] },
     ack: (r: Ack<{ highlight?: [number, number]; items?: Record<ItemType, number> }>) => void
   ): void {
-    const st = this.guard(playerId, ack);
-    if (!st) return;
+    // guard 에 ack 를 넘기지 않고 직접 처리 — 실패 경로에서도 권위 잔량(items)을 실어
+    // 클라 낙관적 차감을 정확히 동기화(+1 desync 방지). 성공/실패 모든 경로에서 items 반환 보장.
+    const st = this.guard(playerId);
+    if (!st) {
+      const cur = this.states.get(playerId);
+      ack({
+        ok: false,
+        error: "지금은 아이템을 사용할 수 없습니다",
+        ...(cur ? { data: { items: { ...cur.items } } } : {}),
+      });
+      return;
+    }
     const type = p?.type;
     if (type !== "search" && type !== "shuffle" && type !== "scissor") {
       ack({ ok: false, error: "알 수 없는 아이템입니다", data: { items: { ...st.items } } });
@@ -366,6 +388,11 @@ export class Match {
       ack?.({ ok: false, error: "진행 중인 매치가 없습니다" });
       return null;
     }
+    if (!this.active) {
+      // 카운트다운(3→2→1) 진행 중 — board:init 전이라 아직 조작 불가
+      ack?.({ ok: false, error: "아직 시작되지 않았습니다" });
+      return null;
+    }
     if (st.cleared) {
       ack?.({ ok: false, error: "이미 클리어했습니다" });
       return null;
@@ -393,7 +420,6 @@ export class Match {
       st.cleared = true;
       st.clearTimeMs = Date.now() - this.startedAt;
       st.score = finalScore(st.score, true);
-      this.clearOrder++;
       this.broadcastProgress(playerId, st);
       if (!this.finishingAnnounced) {
         this.finishingAnnounced = true;
@@ -411,8 +437,8 @@ export class Match {
         });
         this.finishTimer = setTimeout(() => this.endMatch(), this.deps.finishGraceMs);
       }
-      // 유예 중 남은 전원이 클리어/종료(stuck)면 조기 종료 (무한 대기 방지)
-      if ([...this.states.values()].every((s) => s.cleared || s.stuck)) this.endMatch();
+      // 유예 중 남은 전원이 클리어/종료(stuck)/이탈(abandoned)이면 조기 종료 (무한 대기 방지)
+      if ([...this.states.values()].every((s) => s.cleared || s.stuck || s.abandoned)) this.endMatch();
       return;
     }
 
@@ -450,7 +476,21 @@ export class Match {
     if (st.cleared || st.stuck) return;
     st.stuck = true;
     this.broadcastProgress(playerId, st);
-    if ([...this.states.values()].every((s) => s.cleared || s.stuck)) this.endMatch();
+    if ([...this.states.values()].every((s) => s.cleared || s.stuck || s.abandoned)) this.endMatch();
+  }
+
+  /**
+   * 게임 중 이탈(disconnect) 확정 처리 — RoomManager 가 playing/finishing 이탈 시 호출.
+   * 해당 플레이어를 종료상태(abandoned)로 표시하고 종료조건을 재평가한다.
+   * UP 처럼 타이머가 없는 모드에서 "한 명 stuck + 다른 한 명 이탈" 시 영구 대기하던 문제를 해소.
+   * 랭킹은 endMatch 에서 cleared=false·현재 잔여 패 기준으로 자연스럽게 산정된다.
+   */
+  markAbandoned(playerId: string): void {
+    if (this.ended) return;
+    const st = this.states.get(playerId);
+    if (!st || st.cleared || st.stuck || st.abandoned) return;
+    st.abandoned = true;
+    if ([...this.states.values()].every((s) => s.cleared || s.stuck || s.abandoned)) this.endMatch();
   }
 
   /** 도감·이번 판 집계 반영. 이번에 도감 등록된 cardId 목록을 반환. */

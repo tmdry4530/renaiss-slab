@@ -38,10 +38,22 @@ export interface RunningServer {
   close: () => Promise<void>;
 }
 
+// 전역 예외 안전망은 1회만 설치 (createServer 를 여러 번 호출해도 리스너 중복 방지).
+let globalGuardsInstalled = false;
+function installProcessGuards(): void {
+  if (globalGuardsInstalled) return;
+  globalGuardsInstalled = true;
+  // game:start 등에서 예기치 못한 throw 가 이벤트 루프로 새어 나가도 프로세스는 유지한다.
+  // (진짜 버그를 숨기지 않도록 스택을 명확히 로깅 — 종료는 하지 않음.)
+  process.on("uncaughtException", (e) => console.error("[server] uncaughtException (프로세스 유지):", e));
+  process.on("unhandledRejection", (e) => console.error("[server] unhandledRejection (프로세스 유지):", e));
+}
+
 export async function createServer(
   port: number = Number(process.env.PORT) || 8787,
   opts: CreateServerOpts = {}
 ): Promise<RunningServer> {
+  installProcessGuards();
   // maxParamLength: cardId(해시 포함 100자 초과)가 URL 파라미터로 오므로 기본값(100)을 상향
   const app = Fastify({ logger: false, maxParamLength: 512 });
   await app.register(fastifyCors, { origin: true }); // dev CORS 허용
@@ -142,7 +154,15 @@ export async function createServer(
     socket.on("room:join", (p, ack) => ack(mgr.joinSocket(socket, p)));
     socket.on("room:leave", () => mgr.leaveSocket(socket));
     socket.on("room:config", (p, ack) => ack(mgr.configSocket(socket, p)));
-    socket.on("game:start", (ack) => ack(mgr.startSocket(socket)));
+    socket.on("game:start", (ack) => {
+      // 핸들러가 throw 하더라도 ack 를 반드시 호출해 클라가 무응답으로 멈추지 않게 한다.
+      try {
+        ack(mgr.startSocket(socket));
+      } catch (e) {
+        console.error("[server] game:start 처리 실패:", e);
+        ack({ ok: false, error: "게임 시작에 실패했습니다" });
+      }
+    });
 
     socket.on("tile:match", (p, ack) => {
       const ctx = mgr.matchContext(socket);

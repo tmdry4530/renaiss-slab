@@ -39,7 +39,7 @@ export function findPath(grid: boolean[][], a: Point, b: Point): Point[] | null 
     const nr = a.r + DIRS[di].r;
     const nc = a.c + DIRS[di].c;
     if (!canEnter(nr, nc)) continue;
-    const key = nr + "," + nc + "," + di;
+    const key = nr + "," + nc + "," + di + ",0";
     if (visited.has(key)) continue;
     visited.add(key);
     queue.push({ r: nr, c: nc, di, turns: 0, prev: null });
@@ -65,7 +65,7 @@ export function findPath(grid: boolean[][], a: Point, b: Point): Point[] | null 
       const nr = n.r + DIRS[ndi].r;
       const nc = n.c + DIRS[ndi].c;
       if (!canEnter(nr, nc)) continue;
-      const key = nr + "," + nc + "," + ndi;
+      const key = nr + "," + nc + "," + ndi + "," + nturns;
       if (visited.has(key)) continue;
       visited.add(key);
       queue.push({ r: nr, c: nc, di: ndi, turns: nturns, prev: n });

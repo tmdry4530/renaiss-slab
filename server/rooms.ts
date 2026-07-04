@@ -106,7 +106,9 @@ export class RoomManager {
     if (!difficulty) return "알 수 없는 난이도입니다";
     let theme: string | undefined;
     if (b.theme !== undefined) {
-      if (typeof b.theme !== "string" || !(b.theme in MAP_THEMES)) return "알 수 없는 맵 테마입니다";
+      // hasOwnProperty 로 검사 — "in" 은 "constructor" 등 프로토타입 키를 통과시킨다.
+      if (typeof b.theme !== "string" || !Object.prototype.hasOwnProperty.call(MAP_THEMES, b.theme))
+        return "알 수 없는 맵 테마입니다";
       theme = b.theme;
     }
     return {
@@ -264,6 +266,10 @@ export class RoomManager {
       this.deleteRoom(room, "모든 플레이어가 이탈했습니다");
       return;
     }
+    // 일부만 이탈: 이탈자를 매치 종료조건(abandoned)에 반영 — UP 등 타이머 없는 모드에서
+    // "한 명 stuck + 다른 한 명 이탈" 시 종료조건이 재평가되지 않아 영구 대기하던 문제를 해소.
+    // 종료조건을 채우면 endMatch→onMatchEnded 가 방을 정리한다(그 경우 아래 broadcast 는 no-op 수준).
+    room.match?.markAbandoned(playerId);
     this.broadcastRoom(room);
   }
 
@@ -304,7 +310,8 @@ export class RoomManager {
       room.config.difficulty = diff;
     }
     if (p.theme !== undefined) {
-      if (typeof p.theme !== "string" || !(p.theme in MAP_THEMES))
+      // hasOwnProperty 로 검사 — "in" 은 "constructor" 등 프로토타입 키를 통과시킨다.
+      if (typeof p.theme !== "string" || !Object.prototype.hasOwnProperty.call(MAP_THEMES, p.theme))
         return { ok: false, error: "알 수 없는 맵 테마입니다" };
       room.config.theme = p.theme;
     }
@@ -319,17 +326,26 @@ export class RoomManager {
     const { room, playerId } = ctx;
     if (room.hostId !== playerId) return { ok: false, error: "notHost" };
     if (room.state !== "waiting") return { ok: false, error: "playing" };
+    // 보드 생성(generateBoard)이 throw 할 수 있으므로 Match 를 먼저 만들고, 성공한 뒤에만 상태를 커밋한다.
+    // (실패 시 room.state 를 playing 으로 바꾸지 않아 방 벽돌화·ack 무응답을 방지.)
+    let match: Match;
+    try {
+      match = new Match(room, this.pool.cardsFor(room.config.game), {
+        io: this.io,
+        dex: this.dex,
+        finishGraceMs: this.finishGraceMs,
+        countdownStepMs: this.countdownStepMs,
+        onEnded: () => this.onMatchEnded(room),
+      });
+    } catch (e) {
+      console.error("[rooms] 보드 생성 실패:", e);
+      return { ok: false, error: "보드 생성에 실패했습니다" };
+    }
     for (const pl of room.players) pl.finishedRank = undefined;
     room.state = "playing";
-    room.match = new Match(room, this.pool.cardsFor(room.config.game), {
-      io: this.io,
-      dex: this.dex,
-      finishGraceMs: this.finishGraceMs,
-      countdownStepMs: this.countdownStepMs,
-      onEnded: () => this.onMatchEnded(room),
-    });
+    room.match = match;
     this.broadcastRoom(room);
-    room.match.start();
+    match.start();
     return { ok: true, data: {} };
   }
 

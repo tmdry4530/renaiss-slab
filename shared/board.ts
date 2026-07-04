@@ -287,6 +287,10 @@ export function generateBoard(
     const n1 = Math.max(1, Math.min(kindCount - 1, Math.round((kindCount * layerCells[1].length) / total)));
     kindsByLayer[0] = kinds.slice(0, kindCount - n1);
     kindsByLayer[1] = kinds.slice(kindCount - n1);
+    // 방어: usable 카드가 1종뿐이면 한쪽 층이 빈 배열이 돼 뒤의 layerKinds[p % 0]=undefined 크래시.
+    // 층이 비면 전체 종류로 폴백(서로소 보장은 포기하되 안전 배치). 통상 kindCount≥2 라 no-op.
+    if (kindsByLayer[0].length === 0) kindsByLayer[0] = kinds;
+    if (kindsByLayer[1].length === 0) kindsByLayer[1] = kinds;
   }
 
   const cardsList: GameCard[] = [];

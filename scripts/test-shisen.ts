@@ -52,6 +52,20 @@ const P = (r: number, c: number): Point => ({ r, c });
   const g = grid(1, 5, [[1, 1], [1, 3], [1, 5]]); // (1,3) 장애물
   check("막힌 직선 테두리 우회", canConnect(g, P(1, 1), P(1, 5)), true);
 }
+// 7) 회귀: visited 키에 turns 누락으로 정당한 2꺾임 매칭이 거부되던 버그.
+//    4×3 내부 보드, A(1,3)↔B(4,1) 이 테두리 U자(우→하→좌) 2꺾임 경로로 연결돼야 한다.
+//      r1: # . #   r2: # # .   r3: # # #   r4: # . .
+{
+  const occ: [number, number][] = [[1, 1], [1, 3], [2, 1], [2, 2], [3, 1], [3, 2], [3, 3], [4, 1]];
+  const g = grid(4, 3, occ);
+  const path = findPath(g, P(1, 3), P(4, 1));
+  check("테두리 U자 2꺾임 경로 연결(visited turns 회귀)", !!path, true);
+  check(
+    "U자 경로 양끝이 A·B",
+    !!path && path[0].r === 1 && path[0].c === 3 && path[path.length - 1].r === 4 && path[path.length - 1].c === 1,
+    true
+  );
+}
 
 console.log("\n결과: " + pass + " pass, " + fail + " fail");
 process.exit(fail ? 1 : 0);
