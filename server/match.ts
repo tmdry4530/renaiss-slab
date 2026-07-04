@@ -501,6 +501,7 @@ export class Match {
       remaining: st.board.tiles.filter((t) => !t.removed).length,
       score: st.score,
       combo: st.combo.combo,
+      stuck: st.stuck,
     });
   }
 

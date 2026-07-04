@@ -32,7 +32,7 @@ const ASPECT = 1.4;
 
 interface Vanish { id: number; card: GameCard; r: number; c: number; layer: number }
 interface Pop { id: number; x: number; y: number; text: string }
-interface Progress { remaining: number; score: number; combo: number }
+interface Progress { remaining: number; score: number; combo: number; stuck?: boolean }
 
 /**
  * 상하이 free 판정 — shared/board.isTileFree 와 동일 규칙을
@@ -137,6 +137,7 @@ export default function Game({ init, room, myId }: Props) {
   const [scissorOn, setScissorOn] = useState(false);
   const [power, setPower] = useState<ComboPower | null>(null); // 콤보 파워 지정 대기
   const [finishing, setFinishing] = useState<{ nickname: string; sec: number } | null>(null);
+  const [stuck, setStuck] = useState(false); // UP 교착 → 내 보드 진행 불가 (게임 오버)
   const [progress, setProgress] = useState<Record<string, Progress>>({});
   const [muted, setMuted] = useState(audio.isMuted);
 
@@ -290,10 +291,11 @@ export default function Game({ init, room, myId }: Props) {
     };
 
     const onProgress: ServerToClient["player:progress"] = (p) => {
-      setProgress((m) => ({ ...m, [p.playerId]: { remaining: p.remaining, score: p.score, combo: p.combo } }));
+      setProgress((m) => ({ ...m, [p.playerId]: { remaining: p.remaining, score: p.score, combo: p.combo, stuck: p.stuck } }));
       if (p.playerId === myId) {
         setScore(p.score); // 서버 점수를 권위로 동기화 (콤보 파워·가위 점수 포함)
         syncCombo(p.combo);
+        if (p.stuck) setStuck(true); // UP 교착 → 더 진행 불가, 게임오버 오버레이
       }
     };
 
@@ -763,6 +765,18 @@ export default function Game({ init, room, myId }: Props) {
       {/* 내 보드 클리어 (결과 대기) */}
       {remaining === 0 && (
         <div className="cleared-wait">🎉 모든 카드를 제거했어요! 결과 집계 중…</div>
+      )}
+
+      {/* UP 교착 — 더 진행 불가 (게임 오버, 결과 대기) */}
+      {stuck && remaining > 0 && (
+        <div className="stuck-over">
+          <div className="stuck-over-title">💀 게임 오버</div>
+          <div className="stuck-over-sub">
+            더 이상 연결할 카드가 없어요 (교착).
+            <br />
+            남은 순위를 집계하는 중…
+          </div>
+        </div>
       )}
 
       {notice && (

@@ -187,7 +187,7 @@ export interface ServerToClient {
     dexUnlocked?: string[]; // 이번 제거로 도감 등록된 cardId
   }) => void;
   "tile:rejected": (p: { reason: string }) => void;
-  "player:progress": (p: { playerId: string; remaining: number; score: number; combo: number }) => void;
+  "player:progress": (p: { playerId: string; remaining: number; score: number; combo: number; stuck?: boolean }) => void;
   "match:finishing": (p: { winnerId: string; winnerNickname: string; countdownSec: number }) => void;
   "match:ended": (p: { ranks: RankEntry[]; summaries: PlayerSummary[] }) => void;
 }

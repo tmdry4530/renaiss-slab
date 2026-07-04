@@ -569,6 +569,16 @@ h2 { font-size: 16px; margin: 0; }
   background: var(--panel); border: 1px solid var(--up); border-radius: 12px;
   padding: 12px 22px; font-size: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.55);
 }
+/* UP 교착 게임 오버 (내 보드 진행 불가, 결과 대기) */
+.stuck-over {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 45;
+  max-width: 340px; text-align: center;
+  background: rgba(20,25,37,0.96); border: 1px solid var(--up); border-radius: 16px;
+  padding: 22px 28px; box-shadow: 0 16px 46px rgba(0,0,0,0.72);
+  animation: comboIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+.stuck-over-title { font-size: 22px; font-weight: 800; color: var(--up); margin-bottom: 8px; }
+.stuck-over-sub { font-size: 13.5px; line-height: 1.55; color: var(--muted); }
 
 /* ===== 결과 화면 ===== */
 .result-page { margin-top: 22px; padding-bottom: 20px; }
