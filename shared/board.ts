@@ -108,7 +108,9 @@ export function resolveDifficulty(d: DifficultyKey | Difficulty): Difficulty {
 
 // ── 마스크 (비사각형 맵 모양, PRD §6) ────────────────────────
 // 매 라운드 다양한 형태의 맵. true = 타일이 놓이는 유효 칸.
-export type MaskKind = "rect" | "diamond" | "donut" | "cross" | "corners";
+// flame/fish/bolt 는 맵 테마 전용 마스크(shared/mapThemes.ts 로만 지정) — 시드 랜덤 선택 풀(MASK_KINDS)에는
+// 넣지 않는다(기존 5종 랜덤 분포·테스트 유지, 테마 미지정 보드는 이전과 동일하게 동작).
+export type MaskKind = "rect" | "diamond" | "donut" | "cross" | "corners" | "flame" | "fish" | "bolt";
 export const MASK_KINDS: MaskKind[] = ["rect", "diamond", "donut", "cross", "corners"];
 
 /** rows×cols 마스크 생성. 유효 칸 수가 항상 짝수가 되도록 보정한다. */
@@ -154,6 +156,41 @@ export function makeMask(kind: MaskKind, rows: number, cols: number): boolean[][
             (r >= rows - k && c < k) ||
             (r >= rows - k && c >= cols - k);
           m[r][c] = !corner;
+          break;
+        }
+        case "flame": {
+          // 불꽃(테마 전용): 아래(밑동)일수록 넓고 위(불씨 끝)로 갈수록 좁아지는 삼각/불꽃 실루엣
+          const t = rows <= 1 ? 0 : r / (rows - 1); // 0(맨 위)~1(맨 아래)
+          const widthFrac = 0.28 + 0.62 * t;
+          const width = Math.max(1, Math.round(cols * widthFrac));
+          const c0 = Math.floor((cols - width) / 2);
+          m[r][c] = c >= c0 && c < c0 + width;
+          break;
+        }
+        case "fish": {
+          // 물고기(테마 전용): 좌측 둥근 몸통(타원) + 우측으로 갈수록 좁아지는 꼬리
+          const bodyEnd = Math.max(2, Math.round(cols * 0.62));
+          if (c < bodyEnd) {
+            const nr = (r - cr) / (rows / 2 || 1);
+            const nc = (c - bodyEnd / 2) / (bodyEnd / 2 || 1);
+            m[r][c] = nr * nr + nc * nc <= 1.05;
+          } else {
+            const tailLen = Math.max(1, cols - bodyEnd);
+            const tt = (c - bodyEnd) / tailLen; // 0..~1
+            const halfH = Math.max(0.5, (rows / 2) * (1 - tt * 0.85));
+            m[r][c] = Math.abs(r - cr) <= halfH;
+          }
+          break;
+        }
+        case "bolt": {
+          // 번개(테마 전용): 상단/하단이 좌우로 어긋나는 지그재그 굵은 띠
+          const segH = Math.max(1, Math.floor(rows / 3));
+          const seg = Math.floor(r / segH) % 2; // 0,1 교대
+          const w = Math.max(2, Math.floor(cols * 0.34));
+          const leftPos = Math.max(0, Math.floor(cols * 0.12));
+          const rightPos = Math.min(cols - w, Math.max(0, cols - Math.floor(cols * 0.12) - w));
+          const c0 = seg === 0 ? rightPos : leftPos;
+          m[r][c] = c >= c0 && c < c0 + w;
           break;
         }
       }
@@ -223,8 +260,9 @@ export function generateBoard(
   const usable = pool.filter((c) => c.imageUrl);
   if (usable.length === 0) throw new Error("카드 풀이 비어 있습니다");
 
+  // UP 은 항상 rect 강제(테마 마스크가 지정돼도 무시) — 넓은 직사각 보드로 교착 상승 체감 유지
   const maskKind: MaskKind =
-    opts.mask ?? (mapMode === "up" ? "rect" : MASK_KINDS[Math.floor(rnd() * MASK_KINDS.length)]);
+    mapMode === "up" ? "rect" : (opts.mask ?? MASK_KINDS[Math.floor(rnd() * MASK_KINDS.length)]);
   const mask = makeMask(maskKind, diff.rows, diff.cols);
 
   // 층별 셀 목록 (layer 0 = 마스크 전체, 상하이 layer 1 = 중앙 축소 영역)

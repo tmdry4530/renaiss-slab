@@ -586,7 +586,7 @@ export default function Game({ init, room, myId }: Props) {
           </div>
         )}
 
-        <div className="board-wrap">
+        <div className={`board-wrap map-theme-${init.theme ?? "default"}`}>
           <div className="gboard" style={{ width: boardW, height: boardH }}>
             {/* 마스크 유효 칸(빈 slot) 표시 */}
             {baseCells.map((cell) => (

@@ -5,9 +5,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { CardPool, GameCard } from "../shared/cards.ts";
-import type { GameSel } from "../shared/protocol.ts";
 
 const DEFAULT_POOL_PATH = fileURLToPath(new URL("../public/data/card-pool.json", import.meta.url));
+
+// REST 전용 필터 값 — RoomConfig.game(GameSel: pokemon|one-piece, mixed 제거됨)과는 별개로,
+// /api/cards/pool 카드 브라우징 API 는 "mixed"(전체 카드) 조회 편의를 그대로 유지한다.
+export type PoolGameFilter = "pokemon" | "one-piece" | "mixed";
 
 export class PoolStore {
   readonly pool: CardPool;
@@ -35,7 +38,7 @@ export class PoolStore {
   }
 
   /** 게임 셀렉션별 카드 목록 (mixed = 전체) */
-  cardsFor(game: GameSel): GameCard[] {
+  cardsFor(game: PoolGameFilter): GameCard[] {
     if (game === "mixed") return this.pool.cards;
     return this.pool.cards.filter((c) => c.game === game);
   }

@@ -19,6 +19,7 @@ import {
   type Tile,
 } from "../shared/board.ts";
 import { applyComboPower, ComboTracker } from "../shared/combo.ts";
+import { maskForTheme } from "../shared/mapThemes.ts";
 import { finalScore, matchScore, rankPlayers, xpFor, type RankInput } from "../shared/score.ts";
 import {
   COUNTDOWN_STEPS,
@@ -71,9 +72,13 @@ export class Match {
   constructor(private room: Room, poolCards: GameCard[], private deps: MatchDeps) {
     // 매치당 seed 하나 — 전 플레이어 동일 보드 (개인전: 같은 보드를 각자 풂)
     this.seed = (Math.random() * 0xffffffff) >>> 0;
+    // 맵 프리셋 테마가 선택돼 있으면 그 테마에 배정된 마스크를 강제(이름↔디자인 일치, 스펙 A).
+    // 미선택 시 undefined → generateBoard 의 기존 랜덤/모드별 기본 로직 그대로 사용(회귀 없음).
+    const themedMask = maskForTheme(room.config.theme);
     for (const pl of room.players) {
       const board = generateBoard(poolCards, room.config.difficulty, this.seed, {
         mapMode: room.config.mapMode,
+        ...(themedMask ? { mask: themedMask } : {}),
       });
       this.states.set(pl.playerId, {
         board,
@@ -120,6 +125,7 @@ export class Match {
         cards: st.board.cards,
         tiles: toTileStates(st.board),
         ...(this.room.config.mapMode === "up" ? { reserveRows: st.board.reserve.length } : {}),
+        ...(this.room.config.theme ? { theme: this.room.config.theme } : {}),
       });
     }
     // 롤링 모드: ROLLING_INTERVAL_MS 마다 각 플레이어 보드 바깥 테두리를 시계방향 회전

@@ -48,7 +48,7 @@ function loadDraft(nickname: string): DraftConfig {
     maxPlayers: 4,
     visibility: "public",
     password: "",
-    game: "mixed",
+    game: "pokemon",
     mapMode: "normal",
     difficulty: "normal",
   };
@@ -300,9 +300,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
                   <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                     <span className={`tag ${modeTagClass(rm.mapMode)}`}>[{modeLabel(rm.mapMode)}]</span>
                     <span className={`badge-diff ${rm.difficulty}`}>{diffLabel(rm.difficulty)}</span>
-                    <span
-                      className={`badge-ip ${rm.game === "pokemon" ? "pokemon" : rm.game === "one-piece" ? "onepiece" : ""}`}
-                    >
+                    <span className={`badge-ip ${rm.game === "pokemon" ? "pokemon" : "onepiece"}`}>
                       {gameLabel(rm.game)}
                     </span>
                   </span>
@@ -449,7 +447,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
             <div className="mfield">
               <label>카드</label>
               <div className="seg">
-                {(["pokemon", "one-piece", "mixed"] as GameSel[]).map((g) => (
+                {(["pokemon", "one-piece"] as GameSel[]).map((g) => (
                   <button key={g} className={draft.game === g ? "on" : ""} onClick={() => saveDraft({ ...draft, game: g })}>
                     {gameLabel(g)}
                   </button>

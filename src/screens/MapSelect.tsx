@@ -1,5 +1,6 @@
-// 화면 3 — 맵 선택 (Room 내부에서 열리는 오버레이). 필터 + 프리셋 그리드.
-// 선택 완료 시 호스트가 room:config { game, mapMode, difficulty } emit (Room 에서 처리).
+// 화면 3 — 맵 선택 (Room 내부에서 열리는 오버레이). 필터(유형/난이도) + 프리셋 그리드.
+// IP(game)는 방 생성 시 확정되어 여기서 바꾸지 않는다 — 프리셋 목록도 room.game 과 일치하는 것만 노출.
+// 선택 완료 시 호스트가 room:config { mapMode, difficulty, theme } emit (Room 에서 처리).
 import { useState, type CSSProperties } from "react";
 import type {
   DifficultyKey,
@@ -10,28 +11,30 @@ import type {
 import { gameLabel, modeLabel } from "../labels.ts";
 
 // ── 프리셋 정의 (테마명 상수 배열, 12종) ─────────────────────────
+// theme: 배경/보드모양 테마 키(= id, shared/mapThemes.ts MAP_THEMES 참조) — 이름↔디자인 일치(스펙 A).
 export interface MapPreset {
   id: string;
   name: string; // 테마 맵 이름
   emoji: string;
   mapMode: MapMode;
   difficulty: DifficultyKey; // easy=초급 / normal=중급 / hard=고급
-  game: Exclude<GameSel, "mixed">; // 포켓몬 | 원피스
+  game: GameSel; // 포켓몬 | 원피스
+  theme: string; // 배경/보드모양 테마 키 (= id)
 }
 
 export const MAP_PRESETS: MapPreset[] = [
-  { id: "straw-hat",    name: "밀짚모자",   emoji: "👒", mapMode: "rolling",  difficulty: "easy", game: "one-piece" },
-  { id: "devil-fruit",  name: "악마의 열매", emoji: "🍎", mapMode: "normal",   difficulty: "easy", game: "one-piece" },
-  { id: "monster-ball", name: "몬스터볼",   emoji: "🔴", mapMode: "up",       difficulty: "easy", game: "pokemon" },
-  { id: "pikachu",      name: "피카츄",     emoji: "⚡", mapMode: "shanghai", difficulty: "hard", game: "pokemon" },
-  { id: "charizard",    name: "리자몽",     emoji: "🔥", mapMode: "victory",  difficulty: "hard", game: "pokemon" },
-  { id: "jolly-roger",  name: "해적깃발",   emoji: "☠️", mapMode: "normal",   difficulty: "easy", game: "one-piece" },
-  { id: "bulbasaur",    name: "이상해씨",   emoji: "🌿", mapMode: "rolling",  difficulty: "easy", game: "pokemon" },
-  { id: "squirtle",     name: "꼬북이",     emoji: "💧", mapMode: "up",       difficulty: "hard", game: "pokemon" },
-  { id: "luffy",        name: "루피",       emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece" },
-  { id: "nami",         name: "나미",       emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece" },
-  { id: "mewtwo",       name: "뮤츠",       emoji: "💜", mapMode: "normal",   difficulty: "hard", game: "pokemon" },
-  { id: "chopper",      name: "초파",       emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece" },
+  { id: "straw-hat",    name: "밀짚모자",   emoji: "👒", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "straw-hat" },
+  { id: "devil-fruit",  name: "악마의 열매", emoji: "🍎", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "devil-fruit" },
+  { id: "monster-ball", name: "몬스터볼",   emoji: "🔴", mapMode: "up",       difficulty: "easy", game: "pokemon", theme: "monster-ball" },
+  { id: "pikachu",      name: "피카츄",     emoji: "⚡", mapMode: "shanghai", difficulty: "hard", game: "pokemon", theme: "pikachu" },
+  { id: "charizard",    name: "리자몽",     emoji: "🔥", mapMode: "victory",  difficulty: "hard", game: "pokemon", theme: "charizard" },
+  { id: "jolly-roger",  name: "해적깃발",   emoji: "☠️", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "jolly-roger" },
+  { id: "bulbasaur",    name: "이상해씨",   emoji: "🌿", mapMode: "rolling",  difficulty: "easy", game: "pokemon", theme: "bulbasaur" },
+  { id: "squirtle",     name: "꼬북이",     emoji: "💧", mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "squirtle" },
+  { id: "luffy",        name: "루피",       emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "luffy" },
+  { id: "nami",         name: "나미",       emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "nami" },
+  { id: "mewtwo",       name: "뮤츠",       emoji: "💜", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" },
+  { id: "chopper",      name: "초파",       emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" },
 ];
 
 // 맵 난이도 라벨(초급/중급/고급) — 게임 난이도 라벨(쉬움/보통/어려움)과 구분
@@ -42,7 +45,6 @@ const ipClass = (g: MapPreset["game"]): string => (g === "pokemon" ? "pokemon" :
 
 type TypeFilter = MapMode | "all";
 type DiffFilter = DifficultyKey | "all";
-type IpFilter = MapPreset["game"] | "all";
 
 const TYPE_OPTS: { key: TypeFilter; label: string }[] = [
   { key: "all", label: "전체" },
@@ -58,11 +60,6 @@ const DIFF_OPTS: { key: DiffFilter; label: string }[] = [
   { key: "easy", label: "초급" },
   { key: "hard", label: "고급" },
 ];
-const IP_OPTS: { key: IpFilter; label: string }[] = [
-  { key: "all", label: "전체" },
-  { key: "pokemon", label: "⚡ 포켓몬" },
-  { key: "one-piece", label: "☠ 원피스" },
-];
 
 interface Props {
   room: RoomDetail;
@@ -73,19 +70,23 @@ interface Props {
 export default function MapSelect({ room, onCancel, onConfirm }: Props) {
   const [typeF, setTypeF] = useState<TypeFilter>("all");
   const [diffF, setDiffF] = useState<DiffFilter>("all");
-  const [ipF, setIpF] = useState<IpFilter>("all");
   const [sel, setSel] = useState<string | null>(
     () =>
       MAP_PRESETS.find(
-        (p) => p.mapMode === room.mapMode && p.difficulty === room.difficulty && p.game === room.game
+        (p) =>
+          p.mapMode === room.mapMode &&
+          p.difficulty === room.difficulty &&
+          p.game === room.game &&
+          (room.theme ? p.theme === room.theme : true)
       )?.id ?? null
   );
 
+  // IP(카드 세트)는 방 생성 시 확정되어 바뀌지 않는다 — 대기실 맵 선택은 그 IP 맵만 노출(스펙 B).
   const list = MAP_PRESETS.filter(
     (p) =>
+      p.game === room.game &&
       (typeF === "all" || p.mapMode === typeF) &&
-      (diffF === "all" || p.difficulty === diffF) &&
-      (ipF === "all" || p.game === ipF)
+      (diffF === "all" || p.difficulty === diffF)
   );
 
   // 필터 버튼(텍스트형, 활성 강조)
@@ -155,12 +156,9 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
         </div>
         <div>
           <div className="section-label">IP</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {IP_OPTS.map((o) => (
-              <button key={o.key} style={fbtn(ipF === o.key)} onClick={() => setIpF(o.key)}>
-                {o.label}
-              </button>
-            ))}
+          {/* IP 는 방 생성 시 확정 — 대기실에서 바꿀 수 없다(스펙 B). 선택 가능한 필터가 아니라 안내만 표시. */}
+          <div className={`badge-ip ${room.game === "pokemon" ? "pokemon" : "onepiece"}`} style={{ display: "inline-block" }}>
+            {gameLabel(room.game)} 전용
           </div>
         </div>
       </aside>
@@ -173,9 +171,9 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
             return (
               <button
                 key={p.id}
+                className={`map-theme-${p.theme}`}
                 onClick={() => setSel(p.id)}
                 style={{
-                  background: "var(--panel)",
                   border: "2px solid " + (on ? "var(--accent)" : "var(--border)"),
                   borderRadius: "var(--r)",
                   padding: "16px 12px 14px",

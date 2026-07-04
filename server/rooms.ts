@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 import { randomUUID } from "node:crypto";
 import { DIFFICULTIES } from "../shared/board.ts";
+import { MAP_THEMES } from "../shared/mapThemes.ts";
 import {
   MAP_MODES,
   type Ack,
@@ -20,7 +21,7 @@ import type { DexStore } from "./dex.ts";
 import type { PoolStore } from "./pool.ts";
 import type { GameSocket, IO } from "./types.ts";
 
-const GAME_SELS = ["pokemon", "one-piece", "mixed"] as const;
+const GAME_SELS = ["pokemon", "one-piece"] as const;
 const MODE_KEYS = MAP_MODES.map((m) => m.key);
 const DIFF_KEYS = DIFFICULTIES.map((d) => d.key);
 const ROOM_ID_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 혼동 문자(I/O/0/1) 제외
@@ -103,7 +104,21 @@ export class RoomManager {
     if (!mapMode) return "알 수 없는 맵 모드입니다";
     const difficulty = DIFF_KEYS.find((d) => d === b.difficulty);
     if (!difficulty) return "알 수 없는 난이도입니다";
-    return { name, visibility, ...(password ? { password } : {}), maxPlayers, game, mapMode, difficulty };
+    let theme: string | undefined;
+    if (b.theme !== undefined) {
+      if (typeof b.theme !== "string" || !(b.theme in MAP_THEMES)) return "알 수 없는 맵 테마입니다";
+      theme = b.theme;
+    }
+    return {
+      name,
+      visibility,
+      ...(password ? { password } : {}),
+      maxPlayers,
+      game,
+      mapMode,
+      difficulty,
+      ...(theme ? { theme } : {}),
+    };
   }
 
   private genRoomId(): string {
@@ -265,7 +280,7 @@ export class RoomManager {
   /** room:config — 방장만(notHost), waiting 상태에서만 */
   configSocket(
     socket: GameSocket,
-    patch: Partial<Pick<RoomConfig, "game" | "mapMode" | "difficulty">> | undefined
+    patch: Partial<Pick<RoomConfig, "game" | "mapMode" | "difficulty" | "theme">> | undefined
   ): Ack<{ room: RoomDetail }> {
     const ctx = this.roomOf(socket);
     if (!ctx) return { ok: false, error: "참가 중인 방이 없습니다" };
@@ -287,6 +302,11 @@ export class RoomManager {
       const diff = DIFF_KEYS.find((d) => d === p.difficulty);
       if (!diff) return { ok: false, error: "알 수 없는 난이도입니다" };
       room.config.difficulty = diff;
+    }
+    if (p.theme !== undefined) {
+      if (typeof p.theme !== "string" || !(p.theme in MAP_THEMES))
+        return { ok: false, error: "알 수 없는 맵 테마입니다" };
+      room.config.theme = p.theme;
     }
     this.broadcastRoom(room);
     return { ok: true, data: { room: this.toDetail(room) } };
@@ -362,6 +382,7 @@ export class RoomManager {
       game: room.config.game,
       mapMode: room.config.mapMode,
       difficulty: room.config.difficulty,
+      ...(room.config.theme ? { theme: room.config.theme } : {}),
     };
   }
 

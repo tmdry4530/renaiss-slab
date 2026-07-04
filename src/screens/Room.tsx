@@ -23,14 +23,18 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
   const [picked, setPicked] = useState<MapPreset | null>(
     () =>
       MAP_PRESETS.find(
-        (p) => p.mapMode === room.mapMode && p.difficulty === room.difficulty && p.game === room.game
+        (p) =>
+          p.mapMode === room.mapMode &&
+          p.difficulty === room.difficulty &&
+          p.game === room.game &&
+          (room.theme ? p.theme === room.theme : true)
       ) ?? null
   );
 
   const me = room.players.find((p) => p.playerId === myId);
   const isHost = !!me?.isHost;
 
-  function setCfg(patch: Partial<Pick<RoomConfig, "game" | "mapMode" | "difficulty">>) {
+  function setCfg(patch: Partial<Pick<RoomConfig, "game" | "mapMode" | "difficulty" | "theme">>) {
     if (!isHost) return;
     getSocket().emit("room:config", patch, (r) => {
       if (!r.ok) flash(errText(r.error));
@@ -49,16 +53,18 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
   }
 
   // 맵 선택 완료 → 호스트가 room:config emit(기존 계약) + 로컬 프리뷰 반영.
+  // IP(game)는 방 생성 시 확정되어 여기서 덮어쓰지 않는다 — mapMode/difficulty/theme만 반영(스펙 B).
   function onMapConfirm(p: MapPreset) {
     setPicked(p);
     setMapOpen(false);
-    setCfg({ game: p.game, mapMode: p.mapMode, difficulty: p.difficulty });
+    setCfg({ mapMode: p.mapMode, difficulty: p.difficulty, theme: p.theme });
   }
 
   // 프리뷰: 선택 프리셋 or 현재 방 설정 기반(날조 없이 실제 모드/난이도 표기).
   const prevEmoji = picked?.emoji ?? "🗺️";
   const prevName = picked?.name ?? `${modeLabel(room.mapMode)} 맵`;
   const prevDiff = picked?.difficulty ?? room.difficulty;
+  const prevTheme = picked?.theme ?? room.theme ?? "default";
 
   const bigBtn: CSSProperties = { minWidth: 150, padding: "14px 20px", fontSize: 15 };
 
@@ -129,8 +135,8 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
                 }}
               >
                 <div
+                  className={`map-theme-${prevTheme}`}
                   style={{
-                    background: "var(--panel-2)",
                     borderRadius: 10,
                     padding: "44px 0",
                     display: "grid",

@@ -6,7 +6,7 @@ import type { GameCard } from "./cards.ts";
 
 export type MapMode = "normal" | "rolling" | "up" | "victory" | "shanghai";
 export type DifficultyKey = "easy" | "normal" | "hard";
-export type GameSel = "pokemon" | "one-piece" | "mixed";
+export type GameSel = "pokemon" | "one-piece";
 export type RoomState = "waiting" | "playing" | "finishing" | "ended";
 export type ItemType = "search" | "shuffle" | "scissor";
 
@@ -35,6 +35,7 @@ export interface RoomConfig {
   game: GameSel;
   mapMode: MapMode;
   difficulty: DifficultyKey;
+  theme?: string; // 맵 프리셋 테마 키(MapPreset.theme, shared/mapThemes.ts MAP_THEMES 참조) — 대기실 맵 선택 시에만 설정
 }
 
 export interface RoomSummary {
@@ -49,6 +50,7 @@ export interface RoomSummary {
   game: GameSel;
   mapMode: MapMode;
   difficulty: DifficultyKey;
+  theme?: string; // 선택된 맵 프리셋 테마 키 (미선택 시 undefined)
 }
 
 export interface PlayerPublic {
@@ -87,6 +89,7 @@ export interface BoardInit {
   cards: GameCard[]; // 이 판에 등장하는 카드 (tiles[].cardIdx 참조 대상)
   tiles: TileState[];
   reserveRows?: number; // UP 모드: 남은 상승 예비 줄 수
+  theme?: string; // 맵 프리셋 테마 키 (선택 시에만) — 클라 배경 렌더링용
 }
 
 export interface BoardPatch {
@@ -154,7 +157,7 @@ export interface ClientToServer {
   "room:list": (ack: (r: Ack<{ rooms: RoomSummary[] }>) => void) => void;
   "room:join": (p: { roomId: string; password?: string }, ack: (r: Ack<{ room: RoomDetail }>) => void) => void;
   "room:leave": () => void;
-  "room:config": (p: Partial<Pick<RoomConfig, "game" | "mapMode" | "difficulty">>, ack: (r: Ack<{ room: RoomDetail }>) => void) => void;
+  "room:config": (p: Partial<Pick<RoomConfig, "game" | "mapMode" | "difficulty" | "theme">>, ack: (r: Ack<{ room: RoomDetail }>) => void) => void;
   "game:start": (ack: (r: Ack<Record<string, never>>) => void) => void;
   "tile:match": (p: { tileA: number; tileB: number }, ack?: (r: Ack<Record<string, never>>) => void) => void;
   "item:use": (

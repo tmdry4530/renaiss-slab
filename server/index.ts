@@ -15,12 +15,11 @@ import {
   COUNTDOWN_STEP_MS,
   FINISH_GRACE_MS,
   type ClientToServer,
-  type GameSel,
   type ServerToClient,
 } from "../shared/protocol.ts";
 import { marketUrl } from "../shared/cards.ts";
 import { DexStore } from "./dex.ts";
-import { PoolStore } from "./pool.ts";
+import { PoolStore, type PoolGameFilter } from "./pool.ts";
 import { RoomManager } from "./rooms.ts";
 import type { IO, SocketData } from "./types.ts";
 
@@ -101,7 +100,7 @@ export async function createServer(
     const q = (req.query ?? {}) as { game?: string };
     if (q.game && q.game !== "pokemon" && q.game !== "one-piece" && q.game !== "mixed")
       return reply.code(400).send({ ok: false, error: "알 수 없는 카드 세트입니다" });
-    const game: GameSel = q.game === "pokemon" || q.game === "one-piece" ? q.game : "mixed";
+    const game: PoolGameFilter = q.game === "pokemon" || q.game === "one-piece" ? q.game : "mixed";
     const cards = pool.cardsFor(game);
     return {
       generatedAt: pool.pool.generatedAt,

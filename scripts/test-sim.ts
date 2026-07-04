@@ -3,7 +3,7 @@ import { generateBoard, findHint, reshuffle, DIFFICULTIES, type Board } from "..
 import { readFileSync } from "node:fs";
 
 const all = JSON.parse(readFileSync(new URL("../public/data/card-pool.json", import.meta.url), "utf8")).cards;
-const filter = (g: string) => (g === "mixed" ? all : all.filter((c: any) => c.game === g));
+const filter = (g: string) => all.filter((c: any) => c.game === g);
 
 function playToEnd(board: Board, seed: number): { cleared: boolean; moves: number; reshuffles: number } {
   let moves = 0, reshuffles = 0, guard = 0;
@@ -17,7 +17,7 @@ function playToEnd(board: Board, seed: number): { cleared: boolean; moves: numbe
 }
 
 let pass = 0, fail = 0;
-for (const g of ["pokemon", "one-piece", "mixed"]) {
+for (const g of ["pokemon", "one-piece"]) {
   for (const { key } of DIFFICULTIES) {
     let okAll = true, totalRe = 0;
     for (let trial = 0; trial < 20; trial++) {

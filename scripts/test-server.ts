@@ -412,8 +412,8 @@ async function main(): Promise<void> {
   // room:config — 방장만
   const cfgBad = await emitAck(c2.sock, "room:config", { difficulty: "hard" });
   check("room:config notHost", !cfgBad.ok && cfgBad.error === "notHost");
-  const cfgOk = await emitAck<{ room: any }>(c1.sock, "room:config", { difficulty: "normal", game: "mixed" });
-  check("room:config 방장 변경", cfgOk.ok && cfgOk.data!.room.difficulty === "normal" && cfgOk.data!.room.game === "mixed");
+  const cfgOk = await emitAck<{ room: any }>(c1.sock, "room:config", { difficulty: "normal", game: "one-piece" });
+  check("room:config 방장 변경", cfgOk.ok && cfgOk.data!.room.difficulty === "normal" && cfgOk.data!.room.game === "one-piece");
 
   // ── 승리 모드: 즉시 종료 + 진행 중 입장 불가 ────────────────
   console.log("\n[승리 모드]");

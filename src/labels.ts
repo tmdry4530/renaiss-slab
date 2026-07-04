@@ -7,8 +7,7 @@ import {
   type RoomState,
 } from "../shared/protocol.ts";
 
-export const gameLabel = (g: GameSel | "pokemon" | "one-piece"): string =>
-  g === "pokemon" ? "포켓몬" : g === "one-piece" ? "원피스" : "혼합";
+export const gameLabel = (g: GameSel): string => (g === "pokemon" ? "포켓몬" : "원피스");
 
 export const modeLabel = (m: MapMode): string =>
   MAP_MODES.find((x) => x.key === m)?.label ?? m;

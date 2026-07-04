@@ -167,7 +167,7 @@ h2 { font-size: 16px; margin: 0; }
 .combo { color: #07101f; background: var(--pokemon); padding: 3px 10px; border-radius: 20px; font-weight: 800; font-size: 13px; }
 .hud-actions { display: flex; gap: 8px; }
 
-.board-wrap { display: flex; justify-content: center; align-items: flex-start; overflow: auto; padding: 4px; }
+.board-wrap { display: flex; justify-content: center; align-items: flex-start; overflow: auto; padding: 4px; border-radius: var(--r); transition: background 0.25s ease; }
 .board { position: relative; display: grid; gap: 0; }
 .slot { padding: 0; }
 .slot.empty { background: transparent; }
@@ -472,6 +472,60 @@ h2 { font-size: 16px; margin: 0; }
 .crown {
   position: absolute; top: -9px; right: -7px; font-size: 15px; z-index: 5;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,0.7));
+}
+
+/* ── 맵 테마 배경 (이름↔디자인 일치, 스펙 A) ──────────────────
+   .board-wrap(Game.tsx 게임판) · 맵 프리셋 카드(MapSelect.tsx) · 대기실 프리뷰(Room.tsx)에 공용 적용.
+   각 레이어 첫 번째 그라디언트는 어느 테마든 하단 텍스트(이름/뱃지) 대비를 보장하는 공용 스크림. */
+.map-theme-default { background: radial-gradient(120% 120% at 50% 0%, rgba(255,255,255,0.05), transparent 60%); }
+.map-theme-straw-hat {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    linear-gradient(160deg, #d9b06a 0%, #9c7830 55%, #5c4520 100%);
+}
+.map-theme-devil-fruit {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 15%, #9452c9 0%, #5a279c 55%, #26103d 100%);
+}
+.map-theme-monster-ball {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(14px 14px at 50% 38%, #f5f5f7 0 55%, transparent 60%),
+    linear-gradient(180deg, #ee4a3f 0%, #ee4a3f 38%, #1c1c22 38%, #1c1c22 100%);
+}
+.map-theme-pikachu {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 12%, #fff08a 0%, #ffcb05 45%, #a87400 100%);
+}
+.map-theme-charizard {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 140% at 50% 105%, #ffd97a 0%, #ff7b2e 42%, #c23a1a 72%, #4a1006 100%);
+}
+.map-theme-jolly-roger {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 15%, #4a4a54 0%, #1c1c22 55%, #050506 100%);
+}
+.map-theme-bulbasaur {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 15%, #a2eda0 0%, #45a852 55%, #1f5c29 100%);
+}
+.map-theme-squirtle {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 12%, #a7e4f7 0%, #379bd9 55%, #124a70 100%);
+}
+.map-theme-luffy {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 15%, #ff9a6a 0%, #e6432b 55%, #6e160f 100%);
+}
+.map-theme-nami {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    linear-gradient(160deg, #8ff0f0 0%, #2596be 55%, #0d3c56 100%);
+}
+.map-theme-mewtwo {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 15%, #d3aef7 0%, #8a4bd6 55%, #351761 100%);
+}
+.map-theme-chopper {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    radial-gradient(120% 120% at 50% 15%, #ffd3e6 0%, #ec84ab 55%, #8a3a5c 100%);
 }
 
 /* 모드 배너 (콤보 파워 지정 / 가위) */
