@@ -23,6 +23,8 @@ export const COMBO_WINDOW_MS = 3000; // 콤보 지속시간 3초 (플레이 피�
 export const FINISH_GRACE_MS = 10000; // 1위 확정 후 10초 유예
 export const DEX_REGISTER_COUNT = 10; // 동일 카드 누적 10회 제거 시 도감 등록
 export const ITEM_QUOTA: Record<ItemType, number> = { search: 3, shuffle: 3, scissor: 1 };
+export const COUNTDOWN_STEPS = 3; // 3→2→1 카운트다운 스텝 수
+export const COUNTDOWN_STEP_MS = 1000; // 스텝 간 간격(ms). game:start ~ board:init 사이 = STEPS * STEP_MS
 
 // ── 방/플레이어 ──────────────────────────────────────────────
 export interface RoomConfig {
@@ -169,6 +171,7 @@ export interface ServerToClient {
   "lobby:rooms": (p: { rooms: RoomSummary[] }) => void; // 로비 목록 실시간 푸시 (방 생성/입장/퇴장/상태 변경)
   "room:update": (p: { room: RoomDetail }) => void;
   "room:closed": (p: { reason: string }) => void;
+  "game:countdown": (p: { seconds: number }) => void; // game:start 후 board:init 직전 3→2→1 순차 emit
   "board:init": (p: BoardInit) => void;
   "board:update": (p: BoardPatch) => void;
   "tile:matched": (p: {

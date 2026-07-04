@@ -11,7 +11,13 @@ import fastifyStatic from "@fastify/static";
 import { Server as SocketIOServer } from "socket.io";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AddressInfo } from "node:net";
-import { FINISH_GRACE_MS, type ClientToServer, type GameSel, type ServerToClient } from "../shared/protocol.ts";
+import {
+  COUNTDOWN_STEP_MS,
+  FINISH_GRACE_MS,
+  type ClientToServer,
+  type GameSel,
+  type ServerToClient,
+} from "../shared/protocol.ts";
 import { marketUrl } from "../shared/cards.ts";
 import { DexStore } from "./dex.ts";
 import { PoolStore } from "./pool.ts";
@@ -21,6 +27,8 @@ import type { IO, SocketData } from "./types.ts";
 export interface CreateServerOpts {
   /** 테스트용: 1위 확정 후 유예 시간(ms) 주입 (기본 FINISH_GRACE_MS = 10초) */
   finishGraceMs?: number;
+  /** 테스트용: 3-2-1 카운트다운 스텝 간격(ms) 주입 (기본 COUNTDOWN_STEP_MS = 1초) */
+  countdownStepMs?: number;
   /** 테스트용: 도감 저장 파일 경로 격리 */
   dexFile?: string;
 }
@@ -60,7 +68,13 @@ export async function createServer(
     app.server,
     { cors: { origin: true } }
   );
-  const mgr = new RoomManager(io, pool, dex, opts.finishGraceMs ?? FINISH_GRACE_MS);
+  const mgr = new RoomManager(
+    io,
+    pool,
+    dex,
+    opts.finishGraceMs ?? FINISH_GRACE_MS,
+    opts.countdownStepMs ?? COUNTDOWN_STEP_MS
+  );
 
   // ── REST (TECH-SPEC §7.1) ──────────────────────────────────
   app.post("/api/rooms", async (req, reply) => {

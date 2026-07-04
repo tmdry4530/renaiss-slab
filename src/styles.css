@@ -213,6 +213,24 @@ h2 { font-size: 16px; margin: 0; }
 .result-stats b { font-size: 22px; }
 .result-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
 
+/* 게임 시작 3-2-1 카운트다운 오버레이 — game:countdown ~ board:init 사이 클릭 차단 + 연출 */
+.countdown-overlay {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center;
+  background: rgba(6,10,18,0.6);
+}
+.countdown-number {
+  font-size: clamp(64px, 14vw, 160px); font-weight: 800; line-height: 1; color: var(--accent);
+  text-shadow: 0 0 40px rgba(245,158,11,0.55), 0 4px 18px rgba(0,0,0,0.6);
+  animation: countdownPop 0.9s cubic-bezier(0.22,1,0.36,1);
+}
+.countdown-number.go { color: var(--green); text-shadow: 0 0 40px rgba(34,197,94,0.55), 0 4px 18px rgba(0,0,0,0.6); }
+@keyframes countdownPop {
+  0% { transform: scale(0.4); opacity: 0; }
+  35% { transform: scale(1.15); opacity: 1; }
+  70% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.92); opacity: 0.85; }
+}
+
 /* ===== 인터랙션 이펙트 ===== */
 .tile { will-change: transform; }
 .tile.sel { animation: selpulse 0.7s ease-in-out infinite alternate; }

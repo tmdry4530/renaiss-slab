@@ -10,6 +10,7 @@ import type {
 } from "../shared/protocol.ts";
 import { getSocket, hello, loadNickname, loadPlayerId } from "./net.ts";
 import { errText } from "./labels.ts";
+import { audio } from "./audio.ts";
 import Login from "./screens/Login.tsx";
 import Lobby from "./screens/Lobby.tsx";
 import Room from "./screens/Room.tsx";
@@ -32,8 +33,12 @@ export default function App() {
   const [result, setResult] = useState<{ ranks: RankEntry[]; summaries: PlayerSummary[] } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [connected, setConnected] = useState(true);
+  const [countdownSec, setCountdownSec] = useState<number | null>(null); // 3-2-1 카운트다운 오버레이
+  const [showGo, setShowGo] = useState(false); // board:init 도착 시 "시작!" 짧게 표시
   const loggedInRef = useRef(false);
   const noticeTimer = useRef(0);
+  const countdownActiveRef = useRef(false);
+  const goTimer = useRef(0);
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -73,11 +78,31 @@ export default function App() {
       );
       setScreen((cur) => (cur === "room" || cur === "game" ? "lobby" : cur));
     };
+    // 3-2-1 카운트다운 — game:start 후 board:init 직전 서버가 순차 emit
+    const onCountdown = (p: { seconds: number }) => {
+      countdownActiveRef.current = true;
+      setShowGo(false);
+      setCountdownSec(p.seconds);
+      audio.playSound("countdown");
+    };
     const onBoardInit = (b: BoardInit) => {
       setBoardInit(b);
       setGameNo((n) => n + 1);
       setResult(null);
       setScreen("game");
+      if (countdownActiveRef.current) {
+        // 카운트다운 직후 도착한 board:init — "시작!" 을 짧게 보여준 뒤 오버레이 해제
+        countdownActiveRef.current = false;
+        setShowGo(true);
+        audio.playSound("go");
+        window.clearTimeout(goTimer.current);
+        goTimer.current = window.setTimeout(() => {
+          setShowGo(false);
+          setCountdownSec(null);
+        }, 500);
+      } else {
+        setCountdownSec(null);
+      }
     };
     const onEnded = (p: { ranks: RankEntry[]; summaries: PlayerSummary[] }) => {
       setResult(p);
@@ -88,6 +113,7 @@ export default function App() {
     s.on("disconnect", onDisconnect);
     s.on("room:update", onRoomUpdate);
     s.on("room:closed", onRoomClosed);
+    s.on("game:countdown", onCountdown);
     s.on("board:init", onBoardInit);
     s.on("match:ended", onEnded);
     return () => {
@@ -95,6 +121,7 @@ export default function App() {
       s.off("disconnect", onDisconnect);
       s.off("room:update", onRoomUpdate);
       s.off("room:closed", onRoomClosed);
+      s.off("game:countdown", onCountdown);
       s.off("board:init", onBoardInit);
       s.off("match:ended", onEnded);
     };
@@ -213,6 +240,15 @@ export default function App() {
       {screen === "dex" && <Dex pool={pool} onBack={() => setScreen("lobby")} flash={flash} />}
 
       {notice && <div className="notice app-notice">{notice}</div>}
+
+      {/* 게임 시작 3-2-1 카운트다운 — game:start 후 board:init 직전 서버 주도 오버레이(클릭 차단) */}
+      {(countdownSec !== null || showGo) && (
+        <div className="countdown-overlay">
+          <div key={showGo ? "go" : countdownSec} className={`countdown-number${showGo ? " go" : ""}`}>
+            {showGo ? "시작!" : countdownSec}
+          </div>
+        </div>
+      )}
 
       {showHero && (
         <footer className="foot">가격·등급은 Renaiss OS Index 출처. 비영리 팬 프로토타입.</footer>

@@ -167,9 +167,9 @@ function pickPair(board: Board): [Tile, Tile] | null {
 }
 
 async function main(): Promise<void> {
-  // 테스트용 짧은 유예(400ms) + 도감 파일 격리
+  // 테스트용 짧은 유예(400ms) + 짧은 카운트다운 스텝(10ms, board:init 지연 최소화) + 도감 파일 격리
   const dexFile = fileURLToPath(new URL("../.data/dex-test.json", import.meta.url));
-  const srv = await createServer(0, { finishGraceMs: 400, dexFile });
+  const srv = await createServer(0, { finishGraceMs: 400, countdownStepMs: 10, dexFile });
   const url = `http://127.0.0.1:${srv.port}`;
   console.log("서버 기동: " + url);
 

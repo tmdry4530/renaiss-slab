@@ -20,6 +20,7 @@ import { getSocket } from "../net.ts";
 import { errText, modeLabel } from "../labels.ts";
 import { hasRealPrice } from "../ui.tsx";
 import { findPath } from "../../shared/shisen.ts";
+import { audio } from "../audio.ts";
 
 interface Props {
   init: BoardInit;
@@ -137,6 +138,7 @@ export default function Game({ init, room, myId }: Props) {
   const [power, setPower] = useState<ComboPower | null>(null); // 콤보 파워 지정 대기
   const [finishing, setFinishing] = useState<{ nickname: string; sec: number } | null>(null);
   const [progress, setProgress] = useState<Record<string, Progress>>({});
+  const [muted, setMuted] = useState(audio.isMuted);
 
   const tilesRef = useRef(tiles);
   const pendingRef = useRef<[number, number] | null>(null);
@@ -235,6 +237,16 @@ export default function Game({ init, room, myId }: Props) {
       setTiles((ts) => ts.map((t) => (t.tileId === p.tileA || t.tileId === p.tileB ? { ...t, removed: true } : t)));
       setScore((v) => v + p.scoreDelta);
       syncCombo(p.combo);
+      // 콤보파워 발동(5·15=pair, 10·20=clear) 시 combo5/combo10, 아니면 콤보 배수(5·10회차) 또는 기본 매치음
+      if (p.comboPower) {
+        audio.playSound(p.comboPower.kind === "clear" ? "combo10" : "combo5");
+      } else if (p.combo > 0 && p.combo % 10 === 0) {
+        audio.playSound("combo10");
+      } else if (p.combo > 0 && p.combo % 5 === 0) {
+        audio.playSound("combo5");
+      } else {
+        audio.playSound("match");
+      }
       if (p.comboPower) setPower(p.comboPower);
       if (p.dexUnlocked && p.dexUnlocked.length > 0) {
         const names = p.dexUnlocked.map((id) => cards.find((c) => c.cardId === id)?.name ?? id).join(", ");
@@ -252,6 +264,7 @@ export default function Game({ init, room, myId }: Props) {
         window.setTimeout(() => setShake(null), 400);
       }
       syncCombo(0); // 매칭 실패 → 콤보 리셋 (서버 규칙과 동일)
+      audio.playSound("fail");
     };
 
     const onBoardUpdate: ServerToClient["board:update"] = (p) => {
@@ -310,6 +323,12 @@ export default function Game({ init, room, myId }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
+  // BGM — 게임 화면 진입 시 시작, 결과/종료 등으로 화면을 떠나면(언마운트) 정지
+  useEffect(() => {
+    audio.startBgm();
+    return () => audio.stopBgm();
+  }, []);
+
   // 콤보 창(COMBO_WINDOW_MS) 만료 → 표시 리셋
   useEffect(() => {
     if (combo <= 0) return;
@@ -341,6 +360,7 @@ export default function Game({ init, room, myId }: Props) {
   // ── 타일 클릭 ───────────────────────────────────────────────
   function onTile(t: TileState) {
     if (t.removed || !isFreeState(tiles, t, init.mapMode)) return;
+    audio.playSound("select"); // 카드 클릭 — 짧고 가벼운 틱
 
     // 콤보 파워 지정 모드: 클릭한 카드로 발동
     if (power) {
@@ -373,6 +393,7 @@ export default function Game({ init, room, myId }: Props) {
         return;
       }
       const pair: [number, number] = [t.tileId, other.tileId];
+      audio.playSound("item"); // 가위 사용 — 스와이프/휘릭
       setItems((it) => ({ ...it, scissor: it.scissor - 1 })); // 낙관적 즉시 차감
       getSocket().emit("item:use", { type: "scissor", tiles: pair }, (r) => {
         if (r.data?.items) setItems(r.data.items); // 서버 권위 잔량으로 동기화
@@ -412,6 +433,7 @@ export default function Game({ init, room, myId }: Props) {
   // ── 아이템 ──────────────────────────────────────────────────
   function useSimpleItem(type: "search" | "shuffle") {
     if (items[type] <= 0) return;
+    audio.playSound("item"); // 아이템 사용 — 스와이프/휘릭
     setItems((it) => ({ ...it, [type]: it[type] - 1 })); // 낙관적 즉시 차감 (개수 0이면 버튼 즉시 비활성)
     getSocket().emit("item:use", { type }, (r) => {
       // 서버 권위 잔량으로 최종 동기화(이중 차감 방지). items 미반환(가드 실패 등) + 실패면 낙관적 차감 복구.
@@ -712,6 +734,13 @@ export default function Game({ init, room, myId }: Props) {
         </div>
 
         <div className="spacer" />
+        <button
+          className="btn btn-dark btn-block mute-btn"
+          onClick={() => setMuted(audio.toggleMute())}
+          title={muted ? "음소거 해제" : "음소거"}
+        >
+          {muted ? "🔇 음소거됨" : "🔊 소리"}
+        </button>
         <button className="btn btn-dark btn-block" onClick={() => flash("옵션은 준비 중입니다")}>옵션</button>
         {/* 게임 중 일방적 이탈 금지 (플레이 피드백) — 결과 화면 → 대기실 경로로만 퇴장 */}
         <button

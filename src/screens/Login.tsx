@@ -1,6 +1,7 @@
 // F-01 로그인 (데모 범위): 게스트 닉네임(1~12자) → lobby:hello
 // 실서비스 스펙(X OAuth / Web3 지갑)은 데모에서 게스트 로그인으로 대체한다.
 import { useState } from "react";
+import { audio } from "../audio.ts";
 
 interface Props {
   initial: string;
@@ -17,6 +18,7 @@ export default function Login({ initial, onSubmit }: Props) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!valid || busy) return;
+    audio.unlock(); // 첫 사용자 제스처 — 자동재생 정책 언락(AudioContext.resume)
     setBusy(true);
     const ok = await onSubmit(trimmed);
     if (!ok) setBusy(false);

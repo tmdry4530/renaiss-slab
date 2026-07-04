@@ -58,7 +58,8 @@ export class RoomManager {
     private io: IO,
     private pool: PoolStore,
     private dex: DexStore,
-    private finishGraceMs: number
+    private finishGraceMs: number,
+    private countdownStepMs: number
   ) {}
 
   /** 종료 시 모든 매치 타이머 정리 */
@@ -304,6 +305,7 @@ export class RoomManager {
       io: this.io,
       dex: this.dex,
       finishGraceMs: this.finishGraceMs,
+      countdownStepMs: this.countdownStepMs,
       onEnded: () => this.onMatchEnded(room),
     });
     this.broadcastRoom(room);

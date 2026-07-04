@@ -21,6 +21,7 @@ import {
 import { applyComboPower, ComboTracker } from "../shared/combo.ts";
 import { finalScore, matchScore, rankPlayers, xpFor, type RankInput } from "../shared/score.ts";
 import {
+  COUNTDOWN_STEPS,
   ITEM_QUOTA,
   ROLLING_INTERVAL_MS,
   type Ack,
@@ -38,6 +39,7 @@ export interface MatchDeps {
   io: IO;
   dex: DexStore;
   finishGraceMs: number; // 1위 확정 후 유예 (테스트에서 짧게 주입 가능)
+  countdownStepMs: number; // 3-2-1 카운트다운 스텝 간격 (테스트에서 짧게 주입 가능)
   onEnded: () => void; // 매치 종료 후처리 (방 waiting 복귀 등 — RoomManager 담당)
 }
 
@@ -62,6 +64,7 @@ export class Match {
   private states = new Map<string, PState>();
   private rollingTimer: ReturnType<typeof setInterval> | null = null;
   private finishTimer: ReturnType<typeof setTimeout> | null = null;
+  private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private finishingAnnounced = false;
   private clearOrder = 0; // 클리어 시각 순 순번
 
@@ -87,8 +90,23 @@ export class Match {
     }
   }
 
-  /** 각자에게 board:init 전송 + 모드별 타이머 기동 */
+  /** game:start 직후: 3→2→1 카운트다운 emit 후 board:init 전송(플레이 피드백 — 시작 연출) */
   start(): void {
+    this.runCountdown(COUNTDOWN_STEPS);
+  }
+
+  private runCountdown(remaining: number): void {
+    if (remaining <= 0) {
+      this.countdownTimer = null;
+      this.beginBoard();
+      return;
+    }
+    this.deps.io.to(this.room.roomId).emit("game:countdown", { seconds: remaining });
+    this.countdownTimer = setTimeout(() => this.runCountdown(remaining - 1), this.deps.countdownStepMs);
+  }
+
+  /** 각자에게 board:init 전송 + 모드별 타이머 기동 */
+  private beginBoard(): void {
     for (const pl of this.room.players) {
       const st = this.states.get(pl.playerId);
       const sid = this.sockOf(pl.playerId);
@@ -129,6 +147,10 @@ export class Match {
     if (this.finishTimer) {
       clearTimeout(this.finishTimer);
       this.finishTimer = null;
+    }
+    if (this.countdownTimer) {
+      clearTimeout(this.countdownTimer);
+      this.countdownTimer = null;
     }
   }
 
