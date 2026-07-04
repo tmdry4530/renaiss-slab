@@ -20,15 +20,20 @@ export class PoolStore {
   constructor(filePath: string = DEFAULT_POOL_PATH) {
     this.pool = JSON.parse(readFileSync(filePath, "utf8")) as CardPool;
 
-    // 언어 통일: 실제 수집 시장에서 언어별로 가치가 다르고, 게임 화면에선 일어/영어 구분이
-    // 잘 안 보인다는 피드백 → 일본어 카드로만 판을 구성한다(도감·매칭 모두 일본어 기준).
-    // 단, 특정 게임의 일본어 사용 카드가 너무 적으면(<8) 필터를 적용하지 않아 판 구성 실패를 막는다.
+    // 언어 통일 vs 카드 종류 다양성 균형(플레이 피드백: "카드 종류가 너무 적음").
+    // 게임별로 일본어 카드가 충분(가장 어려운 보드의 종류 상한 = VARIETY_TARGET)하면 일본어만
+    // 사용해 언어 통일을 유지하고, 부족하면 그 게임에 한해 전체 언어 카드를 포함해 종류를 늘린다.
+    // 보드는 항상 "동일 카드(같은 이미지) 쌍"을 매칭하므로 언어 혼재로 인한 오매칭 위험은 없다.
+    // → 프리페치로 일본어 풀이 커지면 자동으로 일본어 전용으로 복귀한다.
+    const VARIETY_TARGET = 30; // hard 난이도 cardKinds 상한과 동일
+    const usable = (cards: GameCard[], game: "pokemon" | "one-piece") =>
+      cards.filter((c) => c.game === game && c.imageUrl);
     const jp = this.pool.cards.filter((c) => c.language === "Japanese");
-    const usableJp = (game: "pokemon" | "one-piece") =>
-      jp.filter((c) => c.game === game && c.imageUrl).length;
-    if (usableJp("pokemon") >= 8 && usableJp("one-piece") >= 8) {
-      this.pool.cards = jp;
-    }
+    const pickForGame = (game: "pokemon" | "one-piece") => {
+      const jpg = usable(jp, game);
+      return jpg.length >= VARIETY_TARGET ? jpg : usable(this.pool.cards, game);
+    };
+    this.pool.cards = [...pickForGame("pokemon"), ...pickForGame("one-piece")];
 
     for (const c of this.pool.cards) this.byId.set(c.cardId, c);
     this.totals = {
