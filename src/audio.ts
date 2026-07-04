@@ -38,6 +38,7 @@ class AudioManager {
   private muted = false;
   private bgmPlaying = false;
   private bgmTimer: ReturnType<typeof setTimeout> | null = null;
+  private bgmGain: GainNode | null = null; // 현재 스텝의 게인 노드 — stopBgm 에서 즉시 무음 처리용
 
   /** 컨텍스트를 lazy 생성(1회)해 반환. 생성 실패(미지원 브라우저 등)면 null. */
   private getCtx(): { ctx: AudioContext; master: GainNode } | null {
@@ -173,6 +174,7 @@ class AudioManager {
     g.gain.exponentialRampToValueAtTime(0.05, t0 + 0.5);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + stepDur);
     g.connect(master);
+    this.bgmGain = g;
     chord.forEach((freq, i) => {
       const osc = ctx.createOscillator();
       osc.type = "sine";
@@ -193,12 +195,18 @@ class AudioManager {
     this.scheduleBgmStep(c.ctx, c.master, 0);
   }
 
-  /** 배경음 정지 — 예약된 다음 스텝을 취소한다. */
+  /** 배경음 정지 — 예약된 다음 스텝을 취소하고, 이미 스케줄된 현재 스텝도 즉시 무음 처리한다. */
   stopBgm(): void {
     this.bgmPlaying = false;
     if (this.bgmTimer !== null) {
       clearTimeout(this.bgmTimer);
       this.bgmTimer = null;
+    }
+    if (this.bgmGain && this.ctx) {
+      const now = this.ctx.currentTime;
+      this.bgmGain.gain.cancelScheduledValues(now);
+      this.bgmGain.gain.setValueAtTime(0, now);
+      this.bgmGain = null;
     }
   }
 }

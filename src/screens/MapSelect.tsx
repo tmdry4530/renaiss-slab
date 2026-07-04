@@ -10,7 +10,7 @@ import type {
 } from "../../shared/protocol.ts";
 import { gameLabel, modeLabel } from "../labels.ts";
 
-// ── 프리셋 정의 (테마명 상수 배열, 12종) ─────────────────────────
+// ── 프리셋 정의 (테마명 상수 배열, 13종) ─────────────────────────
 // theme: 배경/보드모양 테마 키(= id, shared/mapThemes.ts MAP_THEMES 참조) — 이름↔디자인 일치(스펙 A).
 export interface MapPreset {
   id: string;
@@ -35,6 +35,7 @@ export const MAP_PRESETS: MapPreset[] = [
   { id: "nami",         name: "나미",       emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "nami" },
   { id: "mewtwo",       name: "뮤츠",       emoji: "💜", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" },
   { id: "chopper",      name: "초파",       emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" },
+  { id: "going-merry",  name: "고잉메리호", emoji: "⛵", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "going-merry" },
 ];
 
 // 맵 난이도 라벨(초급/중급/고급) — 게임 난이도 라벨(쉬움/보통/어려움)과 구분
@@ -219,9 +220,9 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
         </button>
         <button
           className="btn btn-accent"
-          disabled={!sel}
+          disabled={!list.some((x) => x.id === sel)}
           onClick={() => {
-            const p = MAP_PRESETS.find((x) => x.id === sel);
+            const p = list.find((x) => x.id === sel);
             if (p) onConfirm(p);
           }}
         >

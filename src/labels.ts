@@ -40,8 +40,14 @@ const ERR_LABELS: Record<string, string> = {
   timeout: "서버 응답이 없습니다 — 서버 실행 여부를 확인하세요",
 };
 
-export const errText = (e?: string): string =>
-  (e && ERR_LABELS[e]) || `오류가 발생했습니다${e ? ` (${e})` : ""}`;
+export const errText = (e?: string): string => {
+  if (!e) return "오류가 발생했습니다";
+  if (ERR_LABELS[e]) return ERR_LABELS[e];
+  // 서버 guard 가 이미 한글 안내 문구를 error 로 보낸 경우(예: match.ts stuck 가드) 그대로 노출한다.
+  // ERR_LABELS 에 없다고 "오류가 발생했습니다 (…)" 로 이중 표기하면 안내 문구가 뭉개진다.
+  if (/[가-힣]/.test(e)) return e;
+  return `오류가 발생했습니다 (${e})`;
+};
 
 /** 초 → "mm:ss" */
 export const fmtClock = (totalSec: number): string => {

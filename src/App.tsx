@@ -20,6 +20,9 @@ import Dex from "./screens/Dex.tsx";
 
 type Screen = "login" | "lobby" | "room" | "game" | "result" | "dex";
 
+// board:init 미도착 대비 안전 타임아웃(ms) — 정상 흐름에선 board:init 도착 시 취소된다.
+const BOARD_INIT_FALLBACK_MS = 6000;
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>("login");
   const [nickname, setNickname] = useState(loadNickname());
@@ -39,6 +42,7 @@ export default function App() {
   const noticeTimer = useRef(0);
   const countdownActiveRef = useRef(false);
   const goTimer = useRef(0);
+  const boardInitFallbackTimer = useRef(0);
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -80,12 +84,22 @@ export default function App() {
     };
     // 3-2-1 카운트다운 — game:start 후 board:init 직전 서버가 순차 emit
     const onCountdown = (p: { seconds: number }) => {
+      // 라운드가 빠르게 전환될 때 이전 goTimer 가 새 카운트다운을 삼키지 않도록 취소
+      window.clearTimeout(goTimer.current);
+      window.clearTimeout(boardInitFallbackTimer.current);
       countdownActiveRef.current = true;
       setShowGo(false);
       setCountdownSec(p.seconds);
       audio.playSound("countdown");
+      // board:init 미도착 대비 안전 타임아웃 — 정상 흐름에선 board:init 이 먼저 도착해 아래에서 취소된다.
+      boardInitFallbackTimer.current = window.setTimeout(() => {
+        countdownActiveRef.current = false;
+        setShowGo(false);
+        setCountdownSec(null);
+      }, BOARD_INIT_FALLBACK_MS);
     };
     const onBoardInit = (b: BoardInit) => {
+      window.clearTimeout(boardInitFallbackTimer.current);
       setBoardInit(b);
       setGameNo((n) => n + 1);
       setResult(null);

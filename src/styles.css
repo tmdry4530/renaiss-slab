@@ -527,6 +527,10 @@ h2 { font-size: 16px; margin: 0; }
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
     radial-gradient(120% 120% at 50% 15%, #ffd3e6 0%, #ec84ab 55%, #8a3a5c 100%);
 }
+.map-theme-going-merry {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    linear-gradient(160deg, #7fe6c4 0%, #1f9e78 45%, #0a3d2e 100%);
+}
 
 /* 모드 배너 (콤보 파워 지정 / 가위) */
 .mode-banner {

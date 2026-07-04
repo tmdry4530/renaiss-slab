@@ -361,6 +361,7 @@ export default function Game({ init, room, myId }: Props) {
 
   // ── 타일 클릭 ───────────────────────────────────────────────
   function onTile(t: TileState) {
+    if (stuck || remaining === 0) return; // 교착/클리어 후 클릭 차단 — pending 진입 자체를 막아 소프트락 방지
     if (t.removed || !isFreeState(tiles, t, init.mapMode)) return;
     audio.playSound("select"); // 카드 클릭 — 짧고 가벼운 틱
 
@@ -429,7 +430,13 @@ export default function Game({ init, room, myId }: Props) {
     const pair: [number, number] = [sel, t.tileId];
     pendingRef.current = pair;
     setPending(pair);
-    getSocket().emit("tile:match", { tileA: pair[0], tileB: pair[1] });
+    getSocket().emit("tile:match", { tileA: pair[0], tileB: pair[1] }, (r) => {
+      // 서버 guard 실패 등으로 tile:matched/rejected 가 오지 않는 경우의 안전망 — pending 을 풀어 복구
+      if (!r.ok) {
+        pendingRef.current = null;
+        setPending(null);
+      }
+    });
   }
 
   // ── 아이템 ──────────────────────────────────────────────────

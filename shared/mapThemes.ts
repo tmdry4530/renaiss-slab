@@ -23,6 +23,7 @@ export const MAP_THEMES: Record<string, MapThemeDef> = {
   nami: { mask: "fish" }, // 나미 — 물고기형 배치(바다 테마)
   mewtwo: { mask: "diamond" }, // 뮤츠 — 사이킥 크리스탈 다이아몬드 형태
   chopper: { mask: "donut" }, // 초파 — 둥근 순록뿔 링 형태
+  "going-merry": { mask: "rect" }, // 고잉메리호 — UP 강제 rect, 배경은 청록 바다/돛 톤
 };
 
 /** theme 키로 강제 마스크를 조회 (미지정/알 수 없는 키는 undefined → 호출측이 기존 랜덤/기본 로직 사용) */

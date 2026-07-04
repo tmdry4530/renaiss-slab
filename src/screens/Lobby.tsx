@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { CardPool, MarketSnapshot } from "../../shared/cards.ts";
 import {
+  MAP_MODES,
   type DifficultyKey,
   type GameSel,
   type MapMode,
@@ -42,6 +43,12 @@ const DRAFT_KEY = "rsk:lastRoomConfig";
 const STAT_PLAYS_KEY = "rsk:stats:plays";
 const STAT_WINS_KEY = "rsk:stats:wins";
 
+// localStorage draft 검증용 화이트리스트 — 옛 버전의 값(예: game:"mixed")이 남아있어도
+// 서버가 거부하지 않도록 유효 enum 이 아니면 기본값으로 폴백한다.
+const GAME_VALUES: GameSel[] = ["pokemon", "one-piece"];
+const DIFFICULTY_VALUES: DifficultyKey[] = ["easy", "normal", "hard"];
+const MAP_MODE_VALUES: MapMode[] = MAP_MODES.map((m) => m.key);
+
 function loadDraft(nickname: string): DraftConfig {
   const base: DraftConfig = {
     name: `${nickname}의 방`,
@@ -54,7 +61,20 @@ function loadDraft(nickname: string): DraftConfig {
   };
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    if (raw) return { ...base, ...(JSON.parse(raw) as Partial<DraftConfig>), name: base.name, password: "" };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<DraftConfig>;
+      return {
+        ...base,
+        ...parsed,
+        name: base.name,
+        password: "",
+        game: GAME_VALUES.includes(parsed.game as GameSel) ? (parsed.game as GameSel) : base.game,
+        mapMode: MAP_MODE_VALUES.includes(parsed.mapMode as MapMode) ? (parsed.mapMode as MapMode) : base.mapMode,
+        difficulty: DIFFICULTY_VALUES.includes(parsed.difficulty as DifficultyKey)
+          ? (parsed.difficulty as DifficultyKey)
+          : base.difficulty,
+      };
+    }
   } catch {
     /* 무시 — 기본값 사용 */
   }
