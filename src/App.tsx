@@ -8,6 +8,7 @@ import type {
   RankEntry,
   RoomDetail,
 } from "../shared/protocol.ts";
+import { COUNTDOWN_STEPS, COUNTDOWN_STEP_MS } from "../shared/protocol.ts";
 import { getSocket, hello, loadNickname, loadPlayerId } from "./net.ts";
 import { errText } from "./labels.ts";
 import { audio } from "./audio.ts";
@@ -20,8 +21,9 @@ import Dex from "./screens/Dex.tsx";
 
 type Screen = "login" | "lobby" | "room" | "game" | "result" | "dex";
 
-// board:init 미도착 대비 안전 타임아웃(ms) — 정상 흐름에선 board:init 도착 시 취소된다.
-const BOARD_INIT_FALLBACK_MS = 6000;
+// GO(game:countdown{0}) 미도착 대비 안전 타임아웃(ms) — 카운트다운 총 길이 + 여유.
+// board:init 은 카운트다운 시작에 먼저 도착하므로, 이 fallback 은 GO 신호 누락 시 오버레이를 강제 해제한다.
+const GO_FALLBACK_MS = COUNTDOWN_STEPS * COUNTDOWN_STEP_MS + 1500;
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("login");
@@ -41,7 +43,7 @@ export default function App() {
   const noticeTimer = useRef(0);
   const countdownActiveRef = useRef(false);
   const goTimer = useRef(0);
-  const boardInitFallbackTimer = useRef(0);
+  const overlayFallbackTimer = useRef(0);
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -83,40 +85,53 @@ export default function App() {
       );
       setScreen((cur) => (cur === "room" || cur === "game" ? "lobby" : cur));
     };
-    // 3-2-1 카운트다운 — game:start 후 board:init 직전 서버가 순차 emit
-    const onCountdown = (p: { seconds: number }) => {
-      // 라운드가 빠르게 전환될 때 이전 goTimer 가 새 카운트다운을 삼키지 않도록 취소
-      window.clearTimeout(goTimer.current);
-      window.clearTimeout(boardInitFallbackTimer.current);
-      countdownActiveRef.current = true;
-      setShowGo(false);
-      setCountdownSec(p.seconds);
-      audio.playSound("countdown");
-      // board:init 미도착 대비 안전 타임아웃 — 정상 흐름에선 board:init 이 먼저 도착해 아래에서 취소된다.
-      boardInitFallbackTimer.current = window.setTimeout(() => {
-        countdownActiveRef.current = false;
-        setShowGo(false);
-        setCountdownSec(null);
-      }, BOARD_INIT_FALLBACK_MS);
-    };
+    // board:init — 카운트다운 시작에 먼저 도착. 보드를 오버레이 뒤에서 미리 마운트해
+    // 무거운 첫 렌더/썸네일 디코드를 유휴 3초로 흡수한다("시작!"/go 사운드는 GO={0} 이벤트에서만).
     const onBoardInit = (b: BoardInit) => {
-      window.clearTimeout(boardInitFallbackTimer.current);
+      window.clearTimeout(goTimer.current);
+      window.clearTimeout(overlayFallbackTimer.current);
       setBoardInit(b);
       setGameNo((n) => n + 1);
       setResult(null);
       setScreen("game");
-      if (countdownActiveRef.current) {
-        // 카운트다운 직후 도착한 board:init — "시작!" 을 짧게 보여준 뒤 오버레이 해제
+      // 오버레이 즉시 표시(placeholder) — 보드가 뒤에서 준비되는 동안 노출 프레임을 막는다.
+      // 곧 도착할 {3} 이벤트가 같은 값으로 갱신하므로 숫자 element 는 리마운트되지 않는다(애니 1회).
+      countdownActiveRef.current = true;
+      setShowGo(false);
+      setCountdownSec(COUNTDOWN_STEPS);
+      // GO(=game:countdown{0}) 미도착 대비 안전 fallback — 정상 흐름에선 GO 도착 시 취소된다.
+      overlayFallbackTimer.current = window.setTimeout(() => {
+        countdownActiveRef.current = false;
+        setShowGo(false);
+        setCountdownSec(null);
+      }, GO_FALLBACK_MS);
+    };
+    // 카운트다운 — board:init 뒤 3→2→1(seconds>0) 순차, 그리고 0(GO=시작!)
+    const onCountdown = (p: { seconds: number }) => {
+      window.clearTimeout(goTimer.current);
+      if (p.seconds > 0) {
+        // 3→2→1 진행 — 보드는 이미 오버레이 뒤에 마운트됨(board:init 이 먼저 도착)
+        window.clearTimeout(overlayFallbackTimer.current);
+        countdownActiveRef.current = true;
+        setShowGo(false);
+        setCountdownSec(p.seconds);
+        audio.playSound("countdown");
+        overlayFallbackTimer.current = window.setTimeout(() => {
+          countdownActiveRef.current = false;
+          setShowGo(false);
+          setCountdownSec(null);
+        }, GO_FALLBACK_MS);
+      } else {
+        // seconds === 0 → GO(시작!). 선행 카운트다운이 없던 홀로 GO 는 무시(방어).
+        if (!countdownActiveRef.current) return;
+        window.clearTimeout(overlayFallbackTimer.current);
         countdownActiveRef.current = false;
         setShowGo(true);
         audio.playSound("go");
-        window.clearTimeout(goTimer.current);
         goTimer.current = window.setTimeout(() => {
           setShowGo(false);
           setCountdownSec(null);
         }, 500);
-      } else {
-        setCountdownSec(null);
       }
     };
     const onEnded = (p: { ranks: RankEntry[]; summaries: PlayerSummary[] }) => {
@@ -257,7 +272,7 @@ export default function App() {
 
       {notice && <div className="notice app-notice">{notice}</div>}
 
-      {/* 게임 시작 3-2-1 카운트다운 — game:start 후 board:init 직전 서버 주도 오버레이(클릭 차단) */}
+      {/* 게임 시작 카운트다운 — board:init 뒤 3→2→1→시작! 서버 주도 오버레이(클릭 차단, 보드 프리마운트) */}
       {(countdownSec !== null || showGo) && (
         <div className="countdown-overlay">
           <div key={showGo ? "go" : countdownSec} className={`countdown-number${showGo ? " go" : ""}`}>

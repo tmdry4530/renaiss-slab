@@ -174,7 +174,8 @@ export interface ServerToClient {
   "lobby:rooms": (p: { rooms: RoomSummary[] }) => void; // 로비 목록 실시간 푸시 (방 생성/입장/퇴장/상태 변경)
   "room:update": (p: { room: RoomDetail }) => void;
   "room:closed": (p: { reason: string }) => void;
-  "game:countdown": (p: { seconds: number }) => void; // game:start 후 board:init 직전 3→2→1 순차 emit
+  // 시작 연출: board:init 먼저 → 3→2→1 순차 → 0(GO=시작!). seconds 는 3~1(카운트) 또는 0(GO 신호)
+  "game:countdown": (p: { seconds: number }) => void;
   "board:init": (p: BoardInit) => void;
   "board:update": (p: BoardPatch) => void;
   "tile:matched": (p: {

@@ -17,6 +17,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const EVENTS = [
   "room:update",
   "room:closed",
+  "game:countdown",
   "board:init",
   "board:update",
   "tile:matched",
@@ -90,6 +91,16 @@ class TC {
       });
       this.waiters.set(ev, ws);
     });
+  }
+
+  /** GO(game:countdown{0}) 도착까지 대기 — 3→2→1 을 흘려보내고 0(GO) 에서 resolve.
+   *  새 순서(board:init 먼저 → 3→2→1 → 0)에서 active=true 가 되는 GO 시점 이후에만 실플레이. */
+  async waitForGo(timeoutMs = 8000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const p = await this.waitFor<{ seconds: number }>("game:countdown", Math.max(1, deadline - Date.now()));
+      if (p.seconds === 0) return;
+    }
   }
 
   drain(ev: string): void {
@@ -254,6 +265,27 @@ async function main(): Promise<void> {
   const gsDup = await emitAck(c1.sock, "game:start");
   check("진행 중 game:start 거부", !gsDup.ok);
 
+  // 입력 게이트: board:init 은 도착했지만 GO(카운트다운 0) 전에는 active=false → 조작 거부
+  // (새 순서에서 보드가 오버레이 뒤에 미리 마운트돼도 GO 전 입력은 서버가 차단함을 검증)
+  // 서로 다른 카드를 지정 → active=false 면 guard 로, 만에 하나 active=true 면 validateMatch 로 어차피 거부
+  // → 타이밍과 무관하게 tile:rejected 가 보장돼 게이트만 검증한다.
+  {
+    const live = c1.board!.tiles.filter((t) => !t.removed);
+    const a = live[0];
+    const b = live.find((t) => t.matchKey !== a.matchKey)!;
+    const gateMatch = await emitAck(c1.sock, "tile:match", { tileA: a.tileId, tileB: b.tileId });
+    const gateRej = await c1.waitFor<{ reason: string }>("tile:rejected");
+    check("카운트다운 중(GO 전) tile:match 거부", !gateMatch.ok && typeof gateRej.reason === "string");
+    const gateItem = await emitAck(c1.sock, "item:use", { type: "search" });
+    check("카운트다운 중(GO 전) item:use 거부", !gateItem.ok);
+  }
+  // GO(game:countdown 0) 대기 — 여기서부터 active=true (입력 허용)
+  await c1.waitForGo();
+  await c2.waitForGo();
+  // 게이트 검증에서 리셋된 콤보 잔여 이벤트 정리 (이후 실플레이가 깨끗한 상태에서 시작)
+  c1.drain("tile:rejected");
+  c1.drain("player:progress");
+
   // 잘못된 매칭 → tile:rejected + 콤보 리셋
   {
     const live = c1.board!.tiles.filter((t) => !t.removed);
@@ -338,6 +370,8 @@ async function main(): Promise<void> {
   check("재플레이 game:start (인원 유지)", gs2.ok);
   await c1.waitFor<BoardInit>("board:init");
   await c2.waitFor<BoardInit>("board:init");
+  await c1.waitForGo(); // GO 이후에만 아이템 사용 가능
+  await c2.waitForGo();
 
   // 서치: 매칭 가능한 짝 하이라이트 (본인 ack 만)
   const se = await emitAck<{ highlight?: [number, number] }>(c1.sock, "item:use", { type: "search" });
@@ -433,6 +467,8 @@ async function main(): Promise<void> {
   check("승리전 시작", gsV.ok);
   await c1.waitFor<BoardInit>("board:init");
   await c2.waitFor<BoardInit>("board:init");
+  await c1.waitForGo(); // GO 이후에만 가위/매칭 가능 (승리 카드 가위 거부·경로 매칭 검증)
+  await c2.waitForGo();
   const vic = c1.board!.tiles.filter((t) => t.victory);
   check("승리 카드 정확히 1쌍 배치", vic.length === 2 && vic[0].matchKey === vic[1].matchKey);
 

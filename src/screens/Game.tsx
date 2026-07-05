@@ -274,6 +274,7 @@ export default function Game({ init, room, myId }: Props) {
   const noticeTimer = useRef(0);
   const toastTimer = useRef(0);
   const hlTimer = useRef(0);
+  const elapsedStartRef = useRef(0); // 경과시간 기준점 — GO(game:countdown{0}) 수신 시 설정, 그 전엔 0
   useEffect(() => {
     tilesRef.current = tiles;
   }, [tiles]);
@@ -444,11 +445,22 @@ export default function Game({ init, room, myId }: Props) {
     // eslint 없음 — 마운트 시 1회 등록 (cards/myId 는 게임 동안 불변)
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 경과 시간
+  // 경과 시간 — 보드는 카운트다운 시작에 마운트되므로, 실제 플레이 시작(GO=game:countdown{0})
+  // 시점을 기준점으로 잡는다. GO 전엔 0 유지(서버 startedAt/랭킹과 정합).
   useEffect(() => {
-    const startAt = Date.now();
-    const id = window.setInterval(() => setSeconds(Math.floor((Date.now() - startAt) / 1000)), 500);
-    return () => window.clearInterval(id);
+    const sock = getSocket();
+    const onGo = (p: { seconds: number }) => {
+      if (p.seconds === 0) elapsedStartRef.current = Date.now();
+    };
+    sock.on("game:countdown", onGo);
+    const id = window.setInterval(() => {
+      if (elapsedStartRef.current === 0) return; // GO 전 — 0 유지
+      setSeconds(Math.floor((Date.now() - elapsedStartRef.current) / 1000));
+    }, 500);
+    return () => {
+      sock.off("game:countdown", onGo);
+      window.clearInterval(id);
+    };
   }, []);
 
   // BGM — 게임 화면 진입 시 시작, 결과/종료 등으로 화면을 떠나면(언마운트) 정지

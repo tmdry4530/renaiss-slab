@@ -62,8 +62,8 @@ interface PState {
 export class Match {
   readonly seed: number;
   ended = false;
-  private active = false; // beginBoard(카운트다운 종료) 후에만 true — 카운트다운 중 조작 차단
-  private startedAt = Date.now(); // beginBoard 에서 재설정 (클리어 시간에 카운트다운 3초 미포함)
+  private active = false; // beginPlay(GO, 카운트다운 종료) 후에만 true — 카운트다운 중 조작 차단
+  private startedAt = Date.now(); // beginPlay(GO) 에서 재설정 (클리어 시간에 카운트다운 3초 미포함)
   private states = new Map<string, PState>();
   private rollingTimer: ReturnType<typeof setInterval> | null = null;
   private finishTimer: ReturnType<typeof setTimeout> | null = null;
@@ -97,27 +97,33 @@ export class Match {
     }
   }
 
-  /** game:start 직후: 3→2→1 카운트다운 emit 후 board:init 전송(플레이 피드백 — 시작 연출) */
+  /**
+   * game:start 직후 시작 연출 순서 (버벅임 완화):
+   *   1) board:init 먼저 전송 — 클라가 카운트다운 3초 유휴 동안 보드를 오버레이 뒤에서 미리 마운트.
+   *   2) game:countdown 3→2→1 순차 emit.
+   *   3) beginPlay(GO): game:countdown{0} + 입력 게이트 개방 + 클리어 기준점 + 모드 타이머.
+   * active/startedAt/롤링·UP 타이머는 모두 GO(beginPlay) 시점에만 시작 — 카운트다운 중 보드는 정지.
+   */
   start(): void {
+    this.sendBoardInit();
     this.runCountdown(COUNTDOWN_STEPS);
   }
 
   private runCountdown(remaining: number): void {
     if (remaining <= 0) {
       this.countdownTimer = null;
-      this.beginBoard();
+      this.beginPlay();
       return;
     }
     this.deps.io.to(this.room.roomId).emit("game:countdown", { seconds: remaining });
     this.countdownTimer = setTimeout(() => this.runCountdown(remaining - 1), this.deps.countdownStepMs);
   }
 
-  /** 각자에게 board:init 전송 + 모드별 타이머 기동 */
-  private beginBoard(): void {
-    // 보드 시작 게이트: 여기서부터 tile:match/item:use/combo:power 허용 (카운트다운 중 조작 차단).
-    // 클리어 시간 기준점도 여기서 설정해 카운트다운 3초가 clearTimeMs 에 섞이지 않게 한다.
-    this.active = true;
-    this.startedAt = Date.now();
+  /**
+   * 각 플레이어에게 board:init(보드 데이터만) 전송 — active/startedAt/타이머는 절대 건드리지 않는다.
+   * 카운트다운 시작에 호출돼, 무거운 첫 렌더·썸네일 디코드를 유휴 3초로 흡수한다(오버레이 뒤 마운트).
+   */
+  private sendBoardInit(): void {
     for (const pl of this.room.players) {
       const st = this.states.get(pl.playerId);
       const sid = this.sockOf(pl.playerId);
@@ -134,7 +140,20 @@ export class Match {
         ...(this.room.config.theme ? { theme: this.room.config.theme } : {}),
       });
     }
-    // 롤링 모드: ROLLING_INTERVAL_MS 마다 각 플레이어 보드 바깥 테두리를 시계방향 회전
+  }
+
+  /**
+   * GO(카운트다운 종료) 시점: 입력 게이트 개방 + 클리어 기준점 설정 + game:countdown{0}(GO 신호) emit
+   * + 모드별 타이머 기동. board:init 은 이미 sendBoardInit 에서 전송됐다.
+   */
+  private beginPlay(): void {
+    // 보드 시작 게이트: 여기서부터 tile:match/item:use/combo:power 허용 (카운트다운 중 조작 차단).
+    // 클리어 시간 기준점도 여기서 설정해 카운트다운 3초가 clearTimeMs 에 섞이지 않게 한다.
+    this.active = true;
+    this.startedAt = Date.now();
+    // GO 신호: seconds:0 = 시작! (클라가 "시작!" 연출 후 오버레이 해제)
+    this.deps.io.to(this.room.roomId).emit("game:countdown", { seconds: 0 });
+    // 롤링 모드: ROLLING_INTERVAL_MS 마다 각 플레이어 보드 바깥 테두리를 시계방향 회전 (GO 부터 시작)
     if (this.room.config.mapMode === "rolling") {
       this.rollingTimer = setInterval(() => this.tickRolling(), ROLLING_INTERVAL_MS);
     }
@@ -389,7 +408,7 @@ export class Match {
       return null;
     }
     if (!this.active) {
-      // 카운트다운(3→2→1) 진행 중 — board:init 전이라 아직 조작 불가
+      // 카운트다운(3→2→1) 진행 중 — board:init 은 왔지만 GO(beginPlay) 전이라 아직 조작 불가
       ack?.({ ok: false, error: "아직 시작되지 않았습니다" });
       return null;
     }
