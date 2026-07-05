@@ -270,7 +270,7 @@ export default function App() {
 
       {screen === "dex" && <Dex pool={pool} onBack={() => setScreen("lobby")} flash={flash} />}
 
-      {notice && <div className="notice app-notice">{notice}</div>}
+      {notice && <div className="notice app-notice" role="status" aria-live="polite">{notice}</div>}
 
       {/* 게임 시작 카운트다운 — board:init 뒤 3→2→1→시작! 서버 주도 오버레이(클릭 차단, 보드 프리마운트) */}
       {(countdownSec !== null || showGo) && (

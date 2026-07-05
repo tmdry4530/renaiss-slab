@@ -773,7 +773,8 @@ export default function Game({ init, room, myId }: Props) {
         )}
 
         <div className={`board-wrap map-theme-${init.theme ?? "default"}`}>
-          <div className="gboard" style={{ width: boardW, height: boardH }}>
+          <div className="gboard" style={{ width: boardW, height: boardH }} role="group" aria-label="게임 보드 — 같은 카드 두 장을 골라 짝을 맞추세요">
+
             {/* 마스크 유효 칸(빈 slot) 표시 */}
             {baseCells.map((cell) => (
               <div
@@ -945,12 +946,12 @@ export default function Game({ init, room, myId }: Props) {
       )}
 
       {notice && (
-        <div className={`notice${power || scissorOn ? " below-banner" : ""}`}>{notice}</div>
+        <div className={`notice${power || scissorOn ? " below-banner" : ""}`} role="status" aria-live="assertive">{notice}</div>
       )}
 
       {/* 카드 제거 도슨트 토스트 (1단계 짧은 정보 — 상세는 도감에서) */}
       {toast && (
-        <div className="docent">
+        <div className="docent" role="status" aria-live="polite">
           {toast.imageUrlThumb || toast.imageUrl ? (
             <img src={toast.imageUrlThumb || toast.imageUrl} alt="" decoding="async" />
           ) : (
