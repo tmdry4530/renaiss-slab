@@ -1,7 +1,7 @@
 // Renaiss Slab King — 클라이언트 루트. 화면 흐름(FEATURE_SPEC §3):
 // 로그인 → 대기(로비) → 방 → 게임 → 결과 → 로비 복귀. 서버 권위(shared/protocol.ts 계약).
 import { useEffect, useRef, useState } from "react";
-import type { CardPool, MarketSnapshot } from "../shared/cards.ts";
+import type { CardPool } from "../shared/cards.ts";
 import type {
   BoardInit,
   PlayerSummary,
@@ -28,7 +28,6 @@ export default function App() {
   const [nickname, setNickname] = useState(loadNickname());
   const [playerId, setPlayerId] = useState(loadPlayerId() ?? "");
   const [pool, setPool] = useState<CardPool | null>(null);
-  const [market, setMarket] = useState<MarketSnapshot | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [boardInit, setBoardInit] = useState<BoardInit | null>(null);
@@ -50,17 +49,19 @@ export default function App() {
     noticeTimer.current = window.setTimeout(() => setNotice(null), 2600);
   };
 
-  // ── 정적 데이터 (카드 풀 / 마켓 스냅샷) ──────────────────────
-  useEffect(() => {
+  // ── 카드 풀 지연 로드 — 도감(Dex) 진입 시점에만 fetch(≈348KB). 게임은 board:init.cards 로 충분.
+  const poolLoadingRef = useRef(false);
+  function ensurePool() {
+    if (pool || poolLoadingRef.current) return;
+    poolLoadingRef.current = true;
     fetch("/data/card-pool.json")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("card-pool.json 없음 — npm run prefetch 실행"))))
       .then(setPool)
-      .catch((e) => setDataError(String(e.message ?? e)));
-    fetch("/data/market-snapshot.json")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setMarket)
-      .catch(() => {});
-  }, []);
+      .catch((e) => setDataError(String(e.message ?? e)))
+      .finally(() => {
+        poolLoadingRef.current = false;
+      });
+  }
 
   // ── 소켓 수신 (앱 수명 동안 1회 등록) ────────────────────────
   useEffect(() => {
@@ -212,14 +213,15 @@ export default function App() {
         <Lobby
           nickname={nickname}
           playerId={playerId}
-          pool={pool}
-          market={market}
           onEnterRoom={(rm) => {
             setRoom(rm);
             setScreen("room");
           }}
           onSoloRoom={(rm) => setRoom(rm)}
-          onDex={() => setScreen("dex")}
+          onDex={() => {
+            ensurePool();
+            setScreen("dex");
+          }}
           flash={flash}
         />
       )}

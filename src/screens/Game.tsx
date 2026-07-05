@@ -2,7 +2,16 @@
 // board:init 스냅샷으로 렌더하고, 클릭 2개는 tile:match 로 전송만 한다 (낙관적 선판정 없음).
 // tile:matched/rejected/board:update/player:progress/match:finishing 수신으로만 상태를 갱신한다.
 // 기존 GameScreen 의 연출(연결선 폴리라인·vanish 잔상·+점수 팝·도슨트 토스트·notice)을 이식.
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import type { GameCard } from "../../shared/cards.ts";
 import { marketUrl, usd } from "../../shared/cards.ts";
 import {
@@ -111,6 +120,123 @@ function useViewport() {
   }, []);
   return vp;
 }
+
+// ── 보드 타일(메모) ─────────────────────────────────────────
+// 원시 props + React.memo 로, 점수/타이머/progress 리렌더 시 80개 버튼 재조정을 방지한다.
+// 위치는 개별 `translate` 프로퍼티(--tx/--ty)로 주고, hover/layer1/shake 는 transform 으로 합성한다
+// (styles.css .gtile 참고) — 레이아웃 없는 컴포지팅 이동.
+interface TileProps {
+  tileId: number;
+  imgSrc: string;
+  alt: string;
+  victory: boolean;
+  left: number;
+  top: number;
+  w: number;
+  h: number;
+  layer1: boolean;
+  free: boolean;
+  isSel: boolean;
+  isHl: boolean;
+  isShake: boolean;
+  targeting: boolean;
+  faceFont: number;
+  title: string;
+  onClick: (id: number) => void;
+}
+
+const Tile = memo(function Tile(p: TileProps) {
+  const cls = [
+    "gtile",
+    p.layer1 ? "layer1" : "",
+    !p.free ? "covered" : "",
+    p.isSel ? "sel" : "",
+    p.isHl ? "hint" : "",
+    p.isShake ? "shake" : "",
+    p.victory ? "victory" : "",
+    p.targeting ? "targeting" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const style = {
+    "--tx": `${p.left}px`,
+    "--ty": `${p.top}px`,
+    width: p.w,
+    height: p.h,
+  } as CSSProperties;
+  return (
+    <button
+      className={cls}
+      style={style}
+      disabled={!p.free}
+      onClick={() => p.onClick(p.tileId)}
+      title={p.title}
+    >
+      {p.victory ? (
+        <span className="victory-face" style={{ fontSize: p.faceFont }}>승</span>
+      ) : (
+        <img src={p.imgSrc} alt={p.alt} draggable={false} decoding="async" />
+      )}
+      {p.victory && <span className="crown">👑</span>}
+    </button>
+  );
+});
+
+// ── 보드(메모) ──────────────────────────────────────────────
+// 타일 map 을 memo 자식으로 격리 — 타이머/점수/progress 리렌더가 타일 map 재실행을 유발하지 않게.
+interface BoardProps {
+  ordered: TileState[];
+  cards: GameCard[];
+  sel: number | null;
+  pending: [number, number] | null;
+  highlight: [number, number] | null;
+  shake: number | null;
+  targeting: boolean;
+  mapMode: MapMode;
+  coveredKeys: Set<string>;
+  cellW: number;
+  cellH: number;
+  faceFont: number;
+  onTileClick: (id: number) => void;
+}
+
+const Board = memo(function Board(p: BoardProps) {
+  const { ordered, cards, sel, pending, highlight, shake, targeting, mapMode, coveredKeys, cellW, cellH, faceFont, onTileClick } = p;
+  return (
+    <>
+      {ordered.map((t) => {
+        const card = cards[t.cardIdx];
+        // free 판정은 부모의 isFreeState 와 동일 규칙 — coveredKeys(덮인 (r,c,layer) Set)로 O(1) 조회
+        const free = mapMode !== "shanghai" || !coveredKeys.has(`${t.r},${t.c},${t.layer + 1}`);
+        const isSel =
+          sel === t.tileId || (pending !== null && (pending[0] === t.tileId || pending[1] === t.tileId));
+        const isHl = highlight !== null && (highlight[0] === t.tileId || highlight[1] === t.tileId);
+        return (
+          <Tile
+            key={t.tileId}
+            tileId={t.tileId}
+            imgSrc={card.imageUrlThumb || card.imageUrl}
+            alt={card.name}
+            victory={!!t.victory}
+            left={(t.c - 1) * cellW}
+            top={(t.r - 1) * cellH}
+            w={cellW}
+            h={cellH}
+            layer1={t.layer > 0}
+            free={free}
+            isSel={isSel}
+            isHl={isHl}
+            isShake={shake === t.tileId}
+            targeting={targeting && free}
+            faceFont={faceFont}
+            title={t.victory ? "승리 카드" : `${card.name} · ${card.gradeLabel}`}
+            onClick={onTileClick}
+          />
+        );
+      })}
+    </>
+  );
+});
 
 export default function Game({ init, room, myId }: Props) {
   const cards = init.cards;
@@ -331,6 +457,22 @@ export default function Game({ init, room, myId }: Props) {
     return () => audio.stopBgm();
   }, []);
 
+  // 첫 등장 깜빡임 완화 — 초기 보드에 쓰이는 distinct 썸네일을 미리 디코드/프리로드(best-effort).
+  useEffect(() => {
+    const urls = new Set<string>();
+    for (const t of init.tiles) {
+      const c = init.cards[t.cardIdx];
+      const u = c?.imageUrlThumb || c?.imageUrl;
+      if (u) urls.add(u);
+    }
+    for (const u of urls) {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = u;
+      img.decode?.().catch(() => {}); // 실패 무시 — 캐시 워밍만 목적
+    }
+  }, [init]);
+
   // 콤보 창(COMBO_WINDOW_MS) 만료 → 표시 리셋
   useEffect(() => {
     if (combo <= 0) return;
@@ -439,6 +581,15 @@ export default function Game({ init, room, myId }: Props) {
     });
   }
 
+  // 안정 클릭 핸들러 — memo Tile 이 매 렌더 새 클로저를 받지 않도록 ref 로 최신 onTile 을 고정.
+  // tileId → 최신 tiles 에서 타일을 되찾아 onTile 에 넘긴다(동작은 인라인 onClick 과 100% 동일).
+  const onTileRef = useRef(onTile);
+  onTileRef.current = onTile;
+  const handleTileClick = useCallback((id: number) => {
+    const t = tilesRef.current.find((x) => x.tileId === id);
+    if (t) onTileRef.current(t);
+  }, []);
+
   // ── 아이템 ──────────────────────────────────────────────────
   function useSimpleItem(type: "search" | "shuffle") {
     if (items[type] <= 0) return;
@@ -496,9 +647,21 @@ export default function Game({ init, room, myId }: Props) {
   }, [items, scissorOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 렌더 ────────────────────────────────────────────────────
-  const live = tiles.filter((t) => !t.removed);
+  const live = useMemo(() => tiles.filter((t) => !t.removed), [tiles]);
   const remaining = live.length;
-  const ordered = [...live].sort((a, b) => a.layer - b.layer || a.tileId - b.tileId);
+  const ordered = useMemo(
+    () => [...live].sort((a, b) => a.layer - b.layer || a.tileId - b.tileId),
+    [live]
+  );
+  // 상하이 free 판정 O(1) 조회용 — 미제거 타일의 (r,c,layer) 점유 Set(변경 시 1회 계산).
+  // 타일 t 는 (r,c,layer+1) 이 점유돼 있으면 덮여 잠김 → isFreeState 와 동일 규칙.
+  const coveredKeys = useMemo(() => {
+    const s = new Set<string>();
+    if (init.mapMode === "shanghai") {
+      for (const o of tiles) if (!o.removed) s.add(`${o.r},${o.c},${o.layer}`);
+    }
+    return s;
+  }, [tiles, init.mapMode]);
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
   const linePts = line
@@ -508,10 +671,12 @@ export default function Game({ init, room, myId }: Props) {
       }).join(" ")
     : "";
 
-  // 소거가능(연결 가능한 짝) — tiles 변할 때만 재계산
+  // 소거가능(연결 가능한 짝) — findPath BFS 부하가 vanish 연출과 같은 프레임에 겹치지 않도록
+  // tiles 를 useDeferredValue 로 지연 계산. "소거가능" 숫자만 1프레임 늦게 갱신될 뿐(판정 무관).
+  const dTiles = useDeferredValue(tiles);
   const removable = useMemo(
-    () => countRemovable(tiles, init.cols, init.rows, init.mapMode, (t) => cardOf(t).matchKey),
-    [tiles] // eslint-disable-line react-hooks/exhaustive-deps
+    () => countRemovable(dTiles, init.cols, init.rows, init.mapMode, (t) => cardOf(t).matchKey),
+    [dTiles] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // 현재 예상 등수 — 남은 패 적을수록 상위, 동률이면 점수 높을수록 상위
@@ -606,40 +771,21 @@ export default function Game({ init, room, myId }: Props) {
               />
             ))}
 
-            {ordered.map((t) => {
-              const card = cardOf(t);
-              const free = isFreeState(tiles, t, init.mapMode);
-              const isSel =
-                sel === t.tileId ||
-                (pending !== null && (pending[0] === t.tileId || pending[1] === t.tileId));
-              const isHl = highlight !== null && (highlight[0] === t.tileId || highlight[1] === t.tileId);
-              return (
-                <button
-                  key={t.tileId}
-                  className={[
-                    "gtile",
-                    t.layer > 0 ? "layer1" : "",
-                    !free ? "covered" : "",
-                    isSel ? "sel" : "",
-                    isHl ? "hint" : "",
-                    shake === t.tileId ? "shake" : "",
-                    t.victory ? "victory" : "",
-                    (power || scissorOn) && free ? "targeting" : "",
-                  ].filter(Boolean).join(" ")}
-                  style={{ left: (t.c - 1) * cellW, top: (t.r - 1) * cellH, width: cellW, height: cellH }}
-                  disabled={!free}
-                  onClick={() => onTile(t)}
-                  title={t.victory ? "승리 카드" : `${card.name} · ${card.gradeLabel}`}
-                >
-                  {t.victory ? (
-                    <span className="victory-face" style={{ fontSize: Math.round(cellH * 0.5) }}>승</span>
-                  ) : (
-                    <img src={card.imageUrlThumb || card.imageUrl} alt={card.name} draggable={false} />
-                  )}
-                  {t.victory && <span className="crown">👑</span>}
-                </button>
-              );
-            })}
+            <Board
+              ordered={ordered}
+              cards={cards}
+              sel={sel}
+              pending={pending}
+              highlight={highlight}
+              shake={shake}
+              targeting={!!power || scissorOn}
+              mapMode={init.mapMode}
+              coveredKeys={coveredKeys}
+              cellW={cellW}
+              cellH={cellH}
+              faceFont={Math.round(cellH * 0.5)}
+              onTileClick={handleTileClick}
+            />
 
             {/* 제거 팝 잔상 */}
             {vanishing.map((v) => (
@@ -649,7 +795,7 @@ export default function Game({ init, room, myId }: Props) {
                 style={{ left: (v.c - 1) * cellW, top: (v.r - 1) * cellH, width: cellW, height: cellH }}
               >
                 {v.card.imageUrlThumb || v.card.imageUrl ? (
-                  <img src={v.card.imageUrlThumb || v.card.imageUrl} alt="" />
+                  <img src={v.card.imageUrlThumb || v.card.imageUrl} alt="" decoding="async" />
                 ) : (
                   <span className="victory-face" style={{ fontSize: Math.round(cellH * 0.5) }}>승</span>
                 )}
@@ -794,7 +940,7 @@ export default function Game({ init, room, myId }: Props) {
       {toast && (
         <div className="docent">
           {toast.imageUrlThumb || toast.imageUrl ? (
-            <img src={toast.imageUrlThumb || toast.imageUrl} alt="" />
+            <img src={toast.imageUrlThumb || toast.imageUrl} alt="" decoding="async" />
           ) : (
             <span className="victory-face docent-face">승</span>
           )}

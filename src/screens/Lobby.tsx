@@ -1,6 +1,5 @@
 // F-02/F-03 대기(로비) 화면 — 방 목록 조회·입장, 방 만들기, 혼자 바로 하기, 프로필/통계·마켓 사이드바
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import type { CardPool, MarketSnapshot } from "../../shared/cards.ts";
 import {
   MAP_MODES,
   type DifficultyKey,
@@ -17,8 +16,6 @@ interface Props {
   nickname: string;
   /** 도감 달성률·레벨 조회에 사용 (/api/dex/:playerId) */
   playerId: string;
-  pool: CardPool | null;
-  market: MarketSnapshot | null;
   /** 방 입장·생성 성공 → 방(대기실) 화면으로 */
   onEnterRoom: (room: RoomDetail) => void;
   /** 혼자 바로 하기: 방 상태만 저장 (화면 전환은 board:init 수신 시) */
