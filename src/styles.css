@@ -530,8 +530,13 @@ h2 { font-size: 16px; margin: 0; }
 }
 
 /* 모드 배너 (콤보 파워 지정 / 가위) */
+/* 오버레이(fixed) — 문서 흐름에 공간을 차지하지 않아 활성 시 보드가 아래로 밀리지 않는다.
+   보드는 flex 로 세로 중앙 정렬돼 상단 고정 배너(top 72px)와 겹치지 않는다. */
 .mode-banner {
-  position: sticky; top: 8px; z-index: 25; margin: 0 auto 12px; width: fit-content; max-width: 92%;
+  /* 중앙정렬은 개별 translate 프로퍼티로 — comboIn 이 transform(scale/rotate)을 쓰므로
+     transform 으로 중앙정렬하면 애니메이션 동안 정렬이 깨진다(옆으로 튐). */
+  position: fixed; top: 72px; left: 50%; translate: -50% 0; z-index: 25;
+  width: fit-content; max-width: 92%;
   background: var(--panel); border: 1px solid var(--pokemon); color: var(--text);
   padding: 10px 16px; border-radius: 12px; font-size: 14px; display: flex; align-items: center; gap: 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5); animation: comboIn 0.35s cubic-bezier(0.34,1.56,0.64,1);
