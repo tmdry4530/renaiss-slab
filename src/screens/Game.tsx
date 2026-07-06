@@ -21,6 +21,7 @@ import {
   type ComboPower,
   type ItemType,
   type MapMode,
+  type ResumeProgress,
   type RoomDetail,
   type ServerToClient,
   type TileState,
@@ -35,6 +36,7 @@ interface Props {
   init: BoardInit;
   room: RoomDetail | null;
   myId: string;
+  resume?: ResumeProgress | null; // 재접속 복구 시 초기 진행도(점수·콤보·아이템·경과·stuck)
 }
 
 const ASPECT = 1.4;
@@ -238,7 +240,7 @@ const Board = memo(function Board(p: BoardProps) {
   );
 });
 
-export default function Game({ init, room, myId }: Props) {
+export default function Game({ init, room, myId, resume }: Props) {
   const cards = init.cards;
   const cardOf = (t: TileState): GameCard => cards[t.cardIdx];
 
@@ -253,17 +255,18 @@ export default function Game({ init, room, myId }: Props) {
   const [lineKey, setLineKey] = useState(0);
   const [vanishing, setVanishing] = useState<Vanish[]>([]);
   const [pops, setPops] = useState<Pop[]>([]);
-  const [score, setScore] = useState(0);
-  const [combo, setCombo] = useState(0);
+  // 재접속 복구(resume) 시 점수·콤보·아이템·경과·stuck 을 서버 스냅샷으로 초기화. 신규 판이면 기본값.
+  const [score, setScore] = useState(resume?.score ?? 0);
+  const [combo, setCombo] = useState(resume?.combo ?? 0);
   const [comboKey, setComboKey] = useState(0); // 콤보 바 리스타트용
-  const [seconds, setSeconds] = useState(0);
+  const [seconds, setSeconds] = useState(resume ? Math.floor(resume.elapsedMs / 1000) : 0);
   const [toast, setToast] = useState<GameCard | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [items, setItems] = useState<Record<ItemType, number>>({ ...ITEM_QUOTA });
+  const [items, setItems] = useState<Record<ItemType, number>>(resume ? { ...resume.items } : { ...ITEM_QUOTA });
   const [scissorOn, setScissorOn] = useState(false);
   const [power, setPower] = useState<ComboPower | null>(null); // 콤보 파워 지정 대기
   const [finishing, setFinishing] = useState<{ nickname: string; sec: number } | null>(null);
-  const [stuck, setStuck] = useState(false); // UP 교착 → 내 보드 진행 불가 (게임 오버)
+  const [stuck, setStuck] = useState(resume?.stuck ?? false); // UP 교착 → 내 보드 진행 불가 (게임 오버)
   const [progress, setProgress] = useState<Record<string, Progress>>({});
   const [muted, setMuted] = useState(audio.isMuted);
 
@@ -274,7 +277,9 @@ export default function Game({ init, room, myId }: Props) {
   const noticeTimer = useRef(0);
   const toastTimer = useRef(0);
   const hlTimer = useRef(0);
-  const elapsedStartRef = useRef(0); // 경과시간 기준점 — GO(game:countdown{0}) 수신 시 설정, 그 전엔 0
+  // 경과시간 기준점 — GO(game:countdown{0}) 수신 시 설정, 그 전엔 0.
+  // 재접속 복구로 이미 진행 중(elapsedMs>0)이면 GO 를 다시 받지 않으므로 여기서 기준점을 소급 설정한다.
+  const elapsedStartRef = useRef(resume && resume.elapsedMs > 0 ? Date.now() - resume.elapsedMs : 0);
   useEffect(() => {
     tilesRef.current = tiles;
   }, [tiles]);

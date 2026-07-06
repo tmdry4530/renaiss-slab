@@ -3,8 +3,8 @@
 // - 개인전: 매치 시작 시 seed 하나를 생성하고, 모든 플레이어가 동일 seed 로
 //   생성된 동일 보드를 각자 푼다. 진행도는 player:progress 로 방 전체에 공유.
 // - 보드 배치·짝 판정·점수·콤보·아이템 효과는 전부 서버가 계산한다 (shared 엔진 사용).
-// - 게임 중 이탈자는 rooms.ts 에서 connected=false 마킹만 하고 매치는 계속 진행,
-//   매치 종료 시 정리한다. 게임 중 재접속(보드 복구)은 미지원 — 데모 범위 단순화 가정.
+// - 게임 중 이탈자는 rooms.ts 에서 재접속 유예로 connected=false 마킹만 하고 매치는 계속 진행.
+//   유예 중 재접속 시 snapshotFor 로 현재 보드·진행도를 복구해 준다(만료 시에만 정리).
 // ─────────────────────────────────────────────────────────────
 import {
   generateBoard,
@@ -26,10 +26,12 @@ import {
   ITEM_QUOTA,
   ROLLING_INTERVAL_MS,
   type Ack,
+  type BoardInit,
   type BoardPatch,
   type ComboPower,
   type ItemType,
   type PlayerSummary,
+  type ResumeProgress,
 } from "../shared/protocol.ts";
 import type { GameCard } from "../shared/cards.ts";
 import type { DexStore } from "./dex.ts";
@@ -194,6 +196,36 @@ export class Match {
       score: st.score,
       combo: st.combo.combo,
     };
+  }
+
+  /**
+   * 재접속 복구용 스냅샷: 현재 보드 상태(BoardInit, removed 반영)+진행도.
+   * board 부분은 sendBoardInit 와 동일 형태. elapsedMs = active 면 경과, 카운트다운 중이면 0.
+   * 해당 플레이어가 이 매치에 없으면 null.
+   */
+  snapshotFor(playerId: string): { board: BoardInit; progress: ResumeProgress } | null {
+    const st = this.states.get(playerId);
+    if (!st) return null;
+    const board: BoardInit = {
+      rows: st.board.rows,
+      cols: st.board.cols,
+      mapMode: st.board.mapMode,
+      difficulty: st.board.difficulty,
+      seed: this.seed,
+      cards: st.board.cards,
+      tiles: toTileStates(st.board),
+      ...(this.room.config.mapMode === "up" ? { reserveRows: st.board.reserve.length } : {}),
+      ...(this.room.config.theme ? { theme: this.room.config.theme } : {}),
+    };
+    const progress: ResumeProgress = {
+      score: st.score,
+      combo: st.combo.combo,
+      remaining: st.board.tiles.filter((t) => !t.removed).length,
+      items: { ...st.items },
+      elapsedMs: this.active ? Date.now() - this.startedAt : 0,
+      ...(st.stuck ? { stuck: true } : {}),
+    };
+    return { board, progress };
   }
 
   /** 해당 플레이어의 현재 소켓 ID (미접속이면 null) */

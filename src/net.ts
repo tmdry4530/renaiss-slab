@@ -4,7 +4,7 @@
 // playerId·nickname 은 localStorage 에 영속하고, 재접속 시 lobby:hello 를 재수행한다.
 // ─────────────────────────────────────────────────────────────
 import { io, type Socket } from "socket.io-client";
-import type { Ack, ClientToServer, ServerToClient } from "../shared/protocol.ts";
+import type { Ack, ClientToServer, ResumeState, ServerToClient } from "../shared/protocol.ts";
 
 export type GameSocket = Socket<ServerToClient, ClientToServer>;
 
@@ -31,7 +31,10 @@ export const loadNickname = (): string => localStorage.getItem(NICK_KEY) ?? "";
  * lobby:hello 수행. 성공 시 playerId·nickname 을 localStorage 에 영속한다.
  * 서버 무응답 대비 타임아웃(기본 5초) 시 { ok:false, error:"timeout" } 으로 응답한다.
  */
-export function hello(nickname: string, timeoutMs = 5000): Promise<Ack<{ playerId: string }>> {
+export function hello(
+  nickname: string,
+  timeoutMs = 5000
+): Promise<Ack<{ playerId: string; resume?: ResumeState }>> {
   return new Promise((resolve) => {
     let settled = false;
     const timer = window.setTimeout(() => {

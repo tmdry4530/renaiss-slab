@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AddressInfo } from "node:net";
 import {
   COUNTDOWN_STEP_MS,
+  DISCONNECT_GRACE_MS,
   FINISH_GRACE_MS,
   type ClientToServer,
   type ServerToClient,
@@ -28,6 +29,8 @@ export interface CreateServerOpts {
   finishGraceMs?: number;
   /** 테스트용: 3-2-1 카운트다운 스텝 간격(ms) 주입 (기본 COUNTDOWN_STEP_MS = 1초) */
   countdownStepMs?: number;
+  /** 테스트용: 소켓 끊김 후 재접속 유예(ms) 주입 (기본 DISCONNECT_GRACE_MS = 60초) */
+  disconnectGraceMs?: number;
   /** 테스트용: 도감 저장 파일 경로 격리 */
   dexFile?: string;
 }
@@ -84,7 +87,8 @@ export async function createServer(
     pool,
     dex,
     opts.finishGraceMs ?? FINISH_GRACE_MS,
-    opts.countdownStepMs ?? COUNTDOWN_STEP_MS
+    opts.countdownStepMs ?? COUNTDOWN_STEP_MS,
+    opts.disconnectGraceMs ?? DISCONNECT_GRACE_MS
   );
 
   // ── REST (TECH-SPEC §7.1) ──────────────────────────────────
@@ -144,9 +148,8 @@ export async function createServer(
   // ── Socket.IO 이벤트 (shared/protocol.ts 계약) ─────────────
   io.on("connection", (socket) => {
     socket.on("lobby:hello", (p, ack) => {
-      const r = mgr.hello(p?.nickname, p?.playerId);
-      if (r.ok && r.data) socket.data.playerId = r.data.playerId;
-      ack(r);
+      // helloSocket 이 socket.data.playerId 설정 + 유예 중 방 재접속 복구(resume)까지 처리한다.
+      ack(mgr.helloSocket(socket, p?.nickname, p?.playerId));
     });
 
     socket.on("room:create", (p, ack) => ack(mgr.createSocket(socket, p)));

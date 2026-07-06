@@ -21,6 +21,7 @@ export const MAP_MODES: { key: MapMode; label: string; desc: string }[] = [
 export const ROLLING_INTERVAL_MS = 4000; // PRD §4.3 (넷마블 '롤링4각' — 3→4초, 바깥 테두리 시계 회전)
 export const COMBO_WINDOW_MS = 3000; // 콤보 지속시간 3초 (플레이 피드백 반영 — 2초는 콤보 잇기 어려워)
 export const FINISH_GRACE_MS = 10000; // 1위 확정 후 10초 유예
+export const DISCONNECT_GRACE_MS = 60000; // 소켓 끊김(새로고침·순단) 후 재접속 유예 60초
 export const DEX_REGISTER_COUNT = 10; // 동일 카드 누적 10회 제거 시 도감 등록
 export const ITEM_QUOTA: Record<ItemType, number> = { search: 3, shuffle: 3, scissor: 1 };
 export const COUNTDOWN_STEPS = 3; // 3→2→1 카운트다운 스텝 수
@@ -67,6 +68,23 @@ export interface PlayerPublic {
 
 export interface RoomDetail extends RoomSummary {
   players: PlayerPublic[];
+}
+
+// ── 재접속 복구 (새로고침·순단 후 lobby:hello ack 로 반환) ─────
+// 유예(disconnect grace) 중인 같은 playerId 가 재접속하면 서버가 방/보드/진행도를 복원해준다.
+export interface ResumeProgress {
+  score: number;
+  combo: number;
+  remaining: number;
+  items: Record<ItemType, number>;
+  elapsedMs: number; // 플레이 경과(ms). active 전(카운트다운 중)이면 0.
+  stuck?: boolean; // UP 교착으로 진행 불가 확정
+}
+
+export interface ResumeState {
+  room: RoomDetail;
+  board?: BoardInit; // 게임 진행 중일 때만 (waiting 복귀 시 없음 → 대기실로)
+  progress?: ResumeProgress; // board 와 함께 제공
 }
 
 // ── 보드 ────────────────────────────────────────────────────
@@ -152,7 +170,7 @@ export interface Ack<T> {
 }
 
 export interface ClientToServer {
-  "lobby:hello": (p: { nickname: string; playerId?: string }, ack: (r: Ack<{ playerId: string }>) => void) => void;
+  "lobby:hello": (p: { nickname: string; playerId?: string }, ack: (r: Ack<{ playerId: string; resume?: ResumeState }>) => void) => void;
   "room:create": (p: RoomConfig, ack: (r: Ack<{ room: RoomDetail }>) => void) => void;
   "room:list": (ack: (r: Ack<{ rooms: RoomSummary[] }>) => void) => void;
   "room:join": (p: { roomId: string; password?: string }, ack: (r: Ack<{ room: RoomDetail }>) => void) => void;

@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────
 // Renaiss Slab King — 방 관리 (FEATURE_SPEC F-02·F-03, TECH-SPEC §3.4)
 // 가정(Open Issue 6): 방장 퇴장 시 다음 입장자(입장 순서상 가장 앞 플레이어)에게 방장 승계.
-// 게임 중 이탈자: connected=false 마킹만 하고 보드는 유지, 매치는 계속 진행.
-//   매치 종료 시 이탈자를 정리한다. 게임 중 재접속(보드 복구)은 미지원 — 데모 범위 단순화.
+// 소켓 끊김(새로고침·순단): 즉시 제거하지 않고 재접속 유예(disconnectGraceMs) 를 준다.
+//   유예 중 connected=false 마킹만 하고 방·보드·매치 유지. lobby:hello 재수신 시 같은 playerId 를
+//   새 소켓으로 승계(tryResume)하고 방/보드 스냅샷을 복구해 준다. 유예 만료 시에만 기존 제거 로직 실행.
 // ─────────────────────────────────────────────────────────────
 import { randomUUID } from "node:crypto";
 import { DIFFICULTIES } from "../shared/board.ts";
@@ -11,6 +12,7 @@ import {
   MAP_MODES,
   type Ack,
   type PlayerPublic,
+  type ResumeState,
   type RoomConfig,
   type RoomDetail,
   type RoomState,
@@ -32,6 +34,7 @@ export interface RoomPlayer {
   socketId: string | null;
   connected: boolean;
   finishedRank?: number; // 직전 매치 최종 순위 (대기실 표시용)
+  graceTimer?: ReturnType<typeof setTimeout>; // disconnect 유예 타이머 (재접속 시 취소, 만료 시 제거)
 }
 
 export interface Room {
@@ -60,19 +63,34 @@ export class RoomManager {
     private pool: PoolStore,
     private dex: DexStore,
     private finishGraceMs: number,
-    private countdownStepMs: number
+    private countdownStepMs: number,
+    private disconnectGraceMs: number // 소켓 끊김 후 재접속 유예 (만료 시에만 방에서 제거)
   ) {}
 
-  /** 종료 시 모든 매치 타이머 정리 */
+  /** 종료 시 모든 매치 타이머 + 재접속 유예 타이머 정리 */
   dispose(): void {
-    for (const room of this.rooms.values()) room.match?.dispose();
+    for (const room of this.rooms.values()) {
+      room.match?.dispose();
+      for (const pl of room.players) this.clearGrace(pl);
+    }
     this.rooms.clear();
+  }
+
+  /** 재접속 유예 타이머 취소 (재접속·제거·방 삭제 시) */
+  private clearGrace(pl: RoomPlayer): void {
+    if (pl.graceTimer) {
+      clearTimeout(pl.graceTimer);
+      pl.graceTimer = undefined;
+    }
   }
 
   // ── 로비 ───────────────────────────────────────────────────
 
-  /** lobby:hello — playerId 발급/재사용 (재접속 지원) */
-  hello(nickname: unknown, playerId?: unknown): Ack<{ playerId: string }> {
+  /**
+   * lobby:hello — playerId 발급/재사용 + 유예 중 방 재접속 복구.
+   * 같은 playerId 가 (유예 중이거나) 방 소속이면 새 소켓으로 승계하고 resume 데이터를 반환한다.
+   */
+  helloSocket(socket: GameSocket, nickname: unknown, playerId?: unknown): Ack<{ playerId: string; resume?: ResumeState }> {
     const nick = validateNickname(nickname);
     if (!nick) return { ok: false, error: "닉네임은 1~12자여야 합니다" };
     // 기존 playerId 를 제시하면 그대로 재사용 (서버 재시작 후에도 도감 연속성 유지)
@@ -81,7 +99,48 @@ export class RoomManager {
         ? playerId
         : "p-" + randomUUID();
     this.nicknames.set(pid, nick);
-    return { ok: true, data: { playerId: pid } };
+    socket.data.playerId = pid;
+    const resume = this.tryResume(socket, pid);
+    return { ok: true, data: { playerId: pid, ...(resume ? { resume } : {}) } };
+  }
+
+  /**
+   * 재접속 복구: 이 playerId 가 소속된 방을 찾아 새 소켓으로 승계한다.
+   * - 이전 소켓(중복 탭·순단 잔존)은 방 채널에서 내보내 유령 이벤트를 차단.
+   * - connected=true·유예 타이머 취소·room:update 브로드캐스트.
+   * - 진행 중 매치면 보드 스냅샷+진행도를, 아니면 방(RoomDetail)만 반환.
+   * 소속 방이 없으면 undefined (일반 신규 로그인).
+   */
+  private tryResume(socket: GameSocket, playerId: string): ResumeState | undefined {
+    const room = [...this.rooms.values()].find((r) => r.players.some((p) => p.playerId === playerId));
+    if (!room) return undefined;
+    const pl = room.players.find((p) => p.playerId === playerId)!;
+    // 이전 소켓이 살아있으면(중복 접속) 방 채널에서 정리 — 유령 소켓이 계속 이벤트를 받지 않도록.
+    const oldSid = pl.socketId;
+    if (oldSid && oldSid !== socket.id) {
+      const old = this.io.sockets.sockets.get(oldSid);
+      if (old) {
+        old.leave(room.roomId);
+        old.data.roomId = undefined;
+      }
+    }
+    this.clearGrace(pl);
+    pl.connected = true;
+    pl.socketId = socket.id;
+    pl.nickname = this.nicknames.get(playerId) ?? pl.nickname;
+    socket.join(room.roomId);
+    socket.data.roomId = room.roomId;
+    this.broadcastRoom(room);
+
+    const resume: ResumeState = { room: this.toDetail(room) };
+    if (room.match && !room.match.ended) {
+      const snap = room.match.snapshotFor(playerId);
+      if (snap) {
+        resume.board = snap.board;
+        resume.progress = snap.progress;
+      }
+    }
+    return resume;
   }
 
   // ── 방 생성/목록/입장 ──────────────────────────────────────
@@ -199,6 +258,7 @@ export class RoomManager {
     // 이미 이 방의 멤버면(대기 중 재입장 등) 소켓만 재부착
     const existing = room.players.find((pl) => pl.playerId === pid);
     if (existing && room.state === "waiting") {
+      this.clearGrace(existing); // 유예 중이었다면 취소 (만료 제거 방지)
       existing.socketId = socket.id;
       existing.connected = true;
       existing.nickname = this.nicknames.get(pid) ?? existing.nickname;
@@ -232,17 +292,38 @@ export class RoomManager {
     if (room) this.removeFromRoom(room, pid);
   }
 
-  /** disconnect — 대기 중이면 제거, 게임 중이면 connected=false 마킹만 (재접속 미지원) */
+  /**
+   * disconnect — 즉시 제거하지 않고 재접속 유예(disconnectGraceMs) 를 준다.
+   * connected=false 마킹 + 유예 타이머만 걸고, 만료 시에만 기존 제거 로직(removeFromRoom)을 실행한다.
+   * 방장 새로고침으로 방이 즉시 닫히지 않게 하고, 게임 중 순단·새로고침도 재접속으로 복구 가능하게 한다.
+   */
   onDisconnect(socket: GameSocket): void {
     const rid = socket.data.roomId;
     const pid = socket.data.playerId;
     if (!rid || !pid) return;
     const room = this.rooms.get(rid);
-    if (room) this.removeFromRoom(room, pid);
+    if (!room) return;
+    const pl = room.players.find((x) => x.playerId === pid);
+    if (!pl) return;
+    // 이 소켓이 이미 다른 소켓으로 승계됐으면(재접속·중복 탭) 유령 소켓의 disconnect 는 무시.
+    if (pl.socketId && pl.socketId !== socket.id) return;
+    pl.connected = false;
+    pl.socketId = null;
+    this.broadcastRoom(room);
+    this.clearGrace(pl);
+    pl.graceTimer = setTimeout(() => {
+      pl.graceTimer = undefined;
+      // 만료 시점에 방이 이미 삭제/교체됐거나 재접속했으면 스킵.
+      if (this.rooms.get(room.roomId) !== room || pl.connected) return;
+      this.removeFromRoom(room, pid);
+    }, this.disconnectGraceMs);
   }
 
   private removeFromRoom(room: Room, playerId: string): void {
     if (room.state === "waiting" || room.state === "ended") {
+      // 방어적: 제거 대상이 유예 타이머를 들고 있었다면 정리(향후 호출 경로 추가 시 누수 방지 불변식).
+      const leaving = room.players.find((pl) => pl.playerId === playerId);
+      if (leaving) this.clearGrace(leaving);
       room.players = room.players.filter((pl) => pl.playerId !== playerId);
       if (room.players.length === 0) {
         this.deleteRoom(room, "모든 플레이어가 나갔습니다");
@@ -259,8 +340,9 @@ export class RoomManager {
       pl.connected = false;
       pl.socketId = null;
     }
-    // 전원 이탈 시 매치 중단 + 방 삭제
-    if (room.players.every((x) => !x.connected)) {
+    // 전원 이탈 시 매치 중단 + 방 삭제 — 단 아직 유예(재접속 대기) 중인 플레이어가 있으면 보류.
+    // (양쪽이 거의 동시에 새로고침해도, 유예가 남은 상대가 돌아올 여지를 남긴다.)
+    if (room.players.every((x) => !x.connected) && room.players.every((x) => !x.graceTimer)) {
       room.match?.dispose();
       room.match = null;
       this.deleteRoom(room, "모든 플레이어가 이탈했습니다");
@@ -275,6 +357,7 @@ export class RoomManager {
 
   private deleteRoom(room: Room, reason: string): void {
     room.match?.dispose();
+    for (const pl of room.players) this.clearGrace(pl); // 유예 타이머 누수 방지
     this.io.to(room.roomId).emit("room:closed", { reason });
     this.io.in(room.roomId).socketsLeave(room.roomId);
     this.rooms.delete(room.roomId);
@@ -349,15 +432,23 @@ export class RoomManager {
     return { ok: true, data: {} };
   }
 
-  /** 매치 종료 후처리: ended → waiting 복귀(재플레이 가능, 인원 유지), 게임 중 이탈자 정리 */
+  /** 매치 종료 후처리: ended → waiting 복귀(재플레이 가능, 인원 유지), 게임 중 이탈자 정리.
+   *  유예 중(재접속 대기)인 이탈자는 남겨 둔다 — 재접속 시 waiting 방으로 복귀시키기 위함. */
   private onMatchEnded(room: Room): void {
     room.match = null;
-    room.players = room.players.filter((pl) => pl.connected);
+    room.players = room.players.filter((pl) => pl.connected || pl.graceTimer);
     if (room.players.length === 0) {
       this.deleteRoom(room, "매치 종료 후 남은 플레이어가 없습니다");
       return;
     }
-    if (!room.players.some((pl) => pl.playerId === room.hostId)) room.hostId = room.players[0].playerId;
+    // 방장 승계: 방장이 아예 없거나(퇴장) 유예 중(끊김, connected=false)이면 접속 중인 다음
+    // 플레이어에게 이양 — 그렇지 않으면 남은 플레이어가 game:start 시 notHost 로 막혀 재시작 불가.
+    // 접속 중인 플레이어가 없으면(전원 유예) 이양하지 않고 유지 — 재접속 시 원래 방장 그대로 복귀.
+    const hostPlayer = room.players.find((pl) => pl.playerId === room.hostId);
+    if (!hostPlayer || !hostPlayer.connected) {
+      const nextHost = room.players.find((pl) => pl.connected);
+      if (nextHost) room.hostId = nextHost.playerId;
+    }
     room.state = "waiting";
     this.broadcastRoom(room);
   }

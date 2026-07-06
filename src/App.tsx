@@ -6,6 +6,8 @@ import type {
   BoardInit,
   PlayerSummary,
   RankEntry,
+  ResumeProgress,
+  ResumeState,
   RoomDetail,
 } from "../shared/protocol.ts";
 import { COUNTDOWN_STEPS, COUNTDOWN_STEP_MS } from "../shared/protocol.ts";
@@ -25,6 +27,45 @@ type Screen = "login" | "lobby" | "room" | "game" | "result" | "dex";
 // board:init 은 카운트다운 시작에 먼저 도착하므로, 이 fallback 은 GO 신호 누락 시 오버레이를 강제 해제한다.
 const GO_FALLBACK_MS = COUNTDOWN_STEPS * COUNTDOWN_STEP_MS + 1500;
 
+// ── 해시 라우팅 (라이브러리 없이 hashchange 수동 구현) ─────────
+// #/lobby · #/room/<id> · #/game · #/result · #/dex · 기본 #/(login).
+// 새로고침 시 URL 이 화면을 반영해 되돌아올 위치 힌트를 남기고, 뒤로가기(back)를 방어적으로 처리한다.
+// 남의 방 딥링크 자동 입장은 스코프 밖(resume 전용) — roomId 파싱 구조만 추후 확장 가능하게 남긴다.
+function hashFor(screen: Screen, roomId?: string): string {
+  switch (screen) {
+    case "lobby":
+      return "#/lobby";
+    case "room":
+      return roomId ? `#/room/${roomId}` : "#/room";
+    case "game":
+      return "#/game";
+    case "result":
+      return "#/result";
+    case "dex":
+      return "#/dex";
+    default:
+      return "#/";
+  }
+}
+
+function parseHash(): { screen: Screen; roomId?: string } {
+  const parts = window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  switch (parts[0]) {
+    case "lobby":
+      return { screen: "lobby" };
+    case "room":
+      return { screen: "room", roomId: parts[1] };
+    case "game":
+      return { screen: "game" };
+    case "result":
+      return { screen: "result" };
+    case "dex":
+      return { screen: "dex" };
+    default:
+      return { screen: "login" };
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>("login");
   const [nickname, setNickname] = useState(loadNickname());
@@ -33,6 +74,7 @@ export default function App() {
   const [dataError, setDataError] = useState<string | null>(null);
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [boardInit, setBoardInit] = useState<BoardInit | null>(null);
+  const [resumeProgress, setResumeProgress] = useState<ResumeProgress | null>(null); // 재접속 복구 시에만 세팅
   const [gameNo, setGameNo] = useState(0); // board:init 마다 증가 → Game 리마운트 키
   const [result, setResult] = useState<{ ranks: RankEntry[]; summaries: PlayerSummary[] } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -44,6 +86,11 @@ export default function App() {
   const countdownActiveRef = useRef(false);
   const goTimer = useRef(0);
   const overlayFallbackTimer = useRef(0);
+  // 해시 라우팅용: 최신 screen/room 을 이벤트 핸들러(hashchange·onConnect)에서 stale 없이 읽기 위한 ref.
+  const screenRef = useRef<Screen>("login");
+  const roomRef = useRef<RoomDetail | null>(null);
+  const prevScreenRef = useRef<Screen>("login"); // 해시 sync 의 push/replace 판단용
+  const initialHashRef = useRef(parseHash()); // 마운트 시점(해시 sync 이전)의 새로고침 URL
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -65,14 +112,73 @@ export default function App() {
       });
   }
 
+  // ── 재접속 복구 + 자동 로그인 ────────────────────────────────
+  // resume(서버 lobby:hello ack) → 화면 상태 반영: board 있으면 진행 중 게임으로 직행(모드 무관 —
+  // 실제 진행 중인 매치를 놓치지 않는 게 더 중요). board 없을 때(대기 중 방만 존재)는 mode 로 갈린다:
+  //  - reconnect(순단 재접속): 화면은 건드리지 않고 room 상태만 동기화 — 결과 화면(match:ended 직후)을
+  //    보고 있거나 로비를 보고 있던 유저가 room 으로 튕기지 않게 한다.
+  //  - auto/manual(진짜 새로고침·수동 로그인): 기존대로 방 화면으로 직행(로그인 화면 재노출 회피).
+  function applyResume(resume: ResumeState, mode: "manual" | "auto" | "reconnect") {
+    setRoom(resume.room);
+    if (resume.board && resume.progress) {
+      setResumeProgress(resume.progress);
+      setBoardInit(resume.board);
+      setGameNo((n) => n + 1); // Game 리마운트 (복구 보드로)
+      setResult(null);
+      // 이미 시작된 판 복구 — 카운트다운 오버레이는 띄우지 않는다.
+      countdownActiveRef.current = false;
+      setShowGo(false);
+      setCountdownSec(null);
+      setScreen("game");
+      return;
+    }
+    // 진행 중 매치 없음(대기 중 방만 존재) — reconnect 는 현재 화면을 존중, room 상태만 갱신했다.
+    if (mode === "reconnect") return;
+    setScreen("room");
+  }
+
+  // lobby:hello 수행 + resume 처리. mode 로 진입 화면/에러 표시 정책을 나눈다.
+  //  - manual: 로그인 화면에서 직접 로그인 (실패 시 에러 표시, 성공 시 lobby)
+  //  - auto: 마운트 시 저장 닉네임으로 자동 로그인 (실패 조용, 성공 시 새로고침 해시 반영)
+  //  - reconnect: 소켓 자동 재접속 후 재수행 (resume 만 반영, 없으면 현재 화면 유지 — 로비 순단 등)
+  async function loginAndResume(nick: string, mode: "manual" | "auto" | "reconnect"): Promise<boolean> {
+    const r = await hello(nick);
+    if (!(r.ok && r.data)) {
+      if (mode === "manual") flash(errText(r.error));
+      return false;
+    }
+    loggedInRef.current = true;
+    setNickname(nick);
+    setPlayerId(r.data.playerId);
+    if (r.data.resume) {
+      applyResume(r.data.resume, mode);
+      return true;
+    }
+    if (mode === "reconnect") return true; // 복구할 것 없음 → 현재 화면 유지
+    // 최초 진입: auto 는 새로고침 해시가 dex 면 dex, 그 외엔 lobby. manual 은 항상 lobby.
+    if (mode === "auto" && initialHashRef.current.screen === "dex") {
+      ensurePool();
+      setScreen("dex");
+    } else {
+      setScreen("lobby");
+    }
+    return true;
+  }
+
+  // 최신 참조를 1회 등록 effect(onConnect·hashchange)에서 stale 없이 쓰기 위한 ref 브리지.
+  const ensurePoolRef = useRef(ensurePool);
+  ensurePoolRef.current = ensurePool;
+  const loginResumeRef = useRef(loginAndResume);
+  loginResumeRef.current = loginAndResume;
+
   // ── 소켓 수신 (앱 수명 동안 1회 등록) ────────────────────────
   useEffect(() => {
     const s = getSocket();
 
     const onConnect = () => {
       setConnected(true);
-      // 재접속 시 lobby:hello 재수행 (playerId 영속 → 같은 신원 복구)
-      if (loggedInRef.current) void hello(loadNickname());
+      // 재접속 시 lobby:hello 재수행 → resume 있으면 게임/방 복구(순단 중 진행 반영), 없으면 화면 유지.
+      if (loggedInRef.current) void loginResumeRef.current(loadNickname(), "reconnect");
     };
     const onDisconnect = () => setConnected(false);
     const onRoomUpdate = (p: { room: RoomDetail }) => setRoom(p.room);
@@ -91,6 +197,7 @@ export default function App() {
       window.clearTimeout(goTimer.current);
       window.clearTimeout(overlayFallbackTimer.current);
       setBoardInit(b);
+      setResumeProgress(null); // 새 판(정상 시작) — 복구 진행도 아님
       setGameNo((n) => n + 1);
       setResult(null);
       setScreen("game");
@@ -158,18 +265,60 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── 해시 라우팅 ──────────────────────────────────────────────
+  // 화면(및 방 id) → URL 해시 반영 + 이벤트 핸들러용 최신 ref 동기화.
+  // 히스토리 오염 방지 위해 replace 위주, lobby→room/dex 진입만 push 해 back 으로 돌아올 수 있게 한다.
+  useEffect(() => {
+    screenRef.current = screen;
+    roomRef.current = room;
+    const target = hashFor(screen, room?.roomId);
+    const prev = prevScreenRef.current;
+    prevScreenRef.current = screen;
+    if (window.location.hash === target) return;
+    const push = prev === "lobby" && (screen === "room" || screen === "dex");
+    if (push) window.history.pushState(null, "", target);
+    else window.history.replaceState(null, "", target);
+  }, [screen, room]);
+
+  // 뒤로가기(back)/해시 직접 변경 수신 — 우리 push/replaceState 는 이벤트를 발생시키지 않으므로
+  // 여기 도달하는 건 사용자 네비게이션이다. 안전한 전환만 허용하고 나머지는 현재 화면으로 되돌린다.
+  useEffect(() => {
+    const onHash = () => {
+      const target = parseHash().screen;
+      const cur = screenRef.current;
+      if (cur === target) return;
+      if (cur === "lobby" && target === "dex") {
+        ensurePoolRef.current();
+        setScreen("dex");
+      } else if (cur === "dex" && target === "lobby") {
+        setScreen("lobby");
+      } else if ((cur === "room" || cur === "result") && target === "lobby") {
+        // room/result 에서 lobby 로 back → 기존 leaveRoom 흐름(room:leave) 재사용
+        getSocket().emit("room:leave");
+        setRoom(null);
+        setScreen("lobby");
+      } else {
+        // 정의되지 않은 전환 → 현재 화면 해시로 복원(방어).
+        // "game" 은 여기로 떨어진다 — 게임 중 나가기 버튼과 동일하게 Back 으로도 매치 이탈 불가(방어).
+        window.history.replaceState(null, "", hashFor(cur, roomRef.current?.roomId));
+      }
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // 마운트 시 자동 재로그인 — 저장된 닉네임+playerId 가 있으면 hello → resume 있으면 직행.
+  // 저장 닉네임 없으면 login 화면 유지. (앱 수명 동안 1회)
+  useEffect(() => {
+    const nick = loadNickname();
+    const pid = loadPlayerId();
+    if (nick && pid) void loginAndResume(nick, "auto");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── 액션 ────────────────────────────────────────────────────
   async function onLogin(nick: string): Promise<boolean> {
-    const r = await hello(nick);
-    if (r.ok && r.data) {
-      loggedInRef.current = true;
-      setNickname(nick);
-      setPlayerId(r.data.playerId);
-      setScreen("lobby");
-      return true;
-    }
-    flash(errText(r.error));
-    return false;
+    return loginAndResume(nick, "manual");
   }
 
   function leaveRoom() {
@@ -252,7 +401,7 @@ export default function App() {
       )}
 
       {screen === "game" && boardInit && (
-        <Game key={gameNo} init={boardInit} room={room} myId={playerId} />
+        <Game key={gameNo} init={boardInit} room={room} myId={playerId} resume={resumeProgress} />
       )}
 
       {screen === "result" && result && (

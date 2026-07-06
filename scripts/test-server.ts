@@ -178,9 +178,10 @@ function pickPair(board: Board): [Tile, Tile] | null {
 }
 
 async function main(): Promise<void> {
-  // 테스트용 짧은 유예(400ms) + 짧은 카운트다운 스텝(10ms, board:init 지연 최소화) + 도감 파일 격리
+  // 테스트용 짧은 유예(400ms) + 짧은 카운트다운 스텝(10ms, board:init 지연 최소화)
+  // + 짧은 재접속 유예(500ms, 재접속 복구/만료 테스트용) + 도감 파일 격리
   const dexFile = fileURLToPath(new URL("../.data/dex-test.json", import.meta.url));
-  const srv = await createServer(0, { finishGraceMs: 400, countdownStepMs: 10, dexFile });
+  const srv = await createServer(0, { finishGraceMs: 400, countdownStepMs: 10, disconnectGraceMs: 500, dexFile });
   const url = `http://127.0.0.1:${srv.port}`;
   console.log("서버 기동: " + url);
 
@@ -542,6 +543,162 @@ async function main(): Promise<void> {
     "REST /api/dex 소켓과 동일 데이터",
     restDex.entries.length === dg.data.entries.length && restDex.progress.pokemon.registered === dg.data.progress.pokemon.registered
   );
+
+  // ── 재접속 복구 (disconnect grace + resume) ─────────────────
+  console.log("\n[재접속 복구]");
+  // 1) 대기실: A 방 생성 → 소켓 끊김(유예 중 방 유지) → 같은 playerId 재접속 → resume.room 복구
+  const ra = new TC(url);
+  const ha = await emitAck<{ playerId: string }>(ra.sock, "lobby:hello", { nickname: "복구왕" });
+  ra.playerId = ha.data!.playerId;
+  const rcr = await emitAck<{ room: any }>(ra.sock, "room:create", baseCfg({ name: "복구방", maxPlayers: 2 }));
+  const rRoomId: string = rcr.data!.room.roomId;
+  ra.sock.disconnect();
+  await sleep(120); // onDisconnect 처리 대기 (유예 500ms 이내)
+  // 방장 새로고침: 유예 중엔 방이 즉시 닫히지 않는다
+  const lstGrace = await emitAck<{ rooms: any[] }>(c1.sock, "room:list");
+  check("방장 새로고침: 유예 중 방 유지(즉시 안 닫힘)", lstGrace.data!.rooms.some((r) => r.roomId === rRoomId));
+  const ra2 = new TC(url);
+  const reHello = await emitAck<{ playerId: string; resume?: any }>(ra2.sock, "lobby:hello", {
+    nickname: "복구왕",
+    playerId: ra.playerId,
+  });
+  ra2.playerId = ra.playerId;
+  const resume1 = reHello.data?.resume;
+  check(
+    "대기실 재접속: resume.room 반환 + 방 유지",
+    reHello.ok && !!resume1?.room && resume1.room.roomId === rRoomId && !resume1.board
+  );
+  check(
+    "대기실 재접속: connected 복원(true)",
+    resume1?.room.players.find((p: any) => p.playerId === ra.playerId)?.connected === true
+  );
+
+  // 2) 게임 중: 몇 매칭 진행 → 끊김 → 재접속 → resume.board removed 수·progress 일치, elapsedMs>0
+  const rb = new TC(url);
+  await emitAck(rb.sock, "lobby:hello", { nickname: "복구비" });
+  await emitAck(rb.sock, "room:join", { roomId: rRoomId });
+  for (const ev of EVENTS) {
+    ra2.drain(ev);
+    rb.drain(ev);
+  }
+  const rgs = await emitAck(ra2.sock, "game:start"); // ra2 가 방장(승계됨)
+  check("복구방 재플레이 game:start", rgs.ok);
+  await ra2.waitFor<BoardInit>("board:init");
+  await rb.waitFor<BoardInit>("board:init");
+  await ra2.waitForGo();
+  await rb.waitForGo();
+  let scoreBefore = 0;
+  for (let i = 0; i < 3; i++) {
+    const hint = findHint(ra2.board!);
+    if (!hint) break;
+    const r = await emitAck(ra2.sock, "tile:match", { tileA: hint[0].tileId, tileB: hint[1].tileId });
+    if (!r.ok) break;
+    const ev = await ra2.waitFor<any>("tile:matched");
+    scoreBefore += ev.scoreDelta;
+    ra2.drain("player:progress");
+    ra2.drain("board:update");
+  }
+  const removedBefore = ra2.board!.tiles.filter((t) => t.removed).length;
+  const liveBefore = ra2.board!.tiles.filter((t) => !t.removed).length;
+  check("게임 중 진행: 매칭으로 타일 제거됨", removedBefore >= 2 && scoreBefore > 0);
+  ra2.sock.disconnect();
+  await sleep(120);
+  const ra3 = new TC(url);
+  const reHello2 = await emitAck<{ resume?: any }>(ra3.sock, "lobby:hello", { nickname: "복구왕", playerId: ra.playerId });
+  ra3.playerId = ra.playerId;
+  const resume2 = reHello2.data?.resume;
+  const snapRemoved = resume2?.board ? resume2.board.tiles.filter((t: any) => t.removed).length : -1;
+  check("게임 중 재접속: resume.board removed 타일 수 일치", !!resume2?.board && snapRemoved === removedBefore);
+  check(
+    "게임 중 재접속: progress score/remaining/items/elapsed 일치",
+    !!resume2?.progress &&
+      resume2.progress.score === scoreBefore &&
+      resume2.progress.remaining === liveBefore &&
+      resume2.progress.items.search === 3 &&
+      resume2.progress.items.scissor === 1 &&
+      resume2.progress.elapsedMs > 0
+  );
+  // 복구 후 계속 플레이 가능 (재조인된 소켓이 매치에 유효)
+  ra3.board = buildBoard(resume2.board as BoardInit);
+  const contHint = findHint(ra3.board);
+  const contMatch = contHint
+    ? await emitAck(ra3.sock, "tile:match", { tileA: contHint[0].tileId, tileB: contHint[1].tileId })
+    : { ok: false };
+  if (contHint) await ra3.waitFor<any>("tile:matched", 3000);
+  check("게임 중 재접속: 복구 후 계속 플레이 가능", contMatch.ok);
+
+  // 3) 방장 유예 중 매치 종료 → 남은 플레이어에게 방장 승계 (game:start 재시작 가능해야 함)
+  //    타이밍 경합 방지를 위해 전용 서버(유예 5000ms — 이 시나리오 안에서 절대 만료되지 않게)를 따로 띄운다.
+  //    victory 모드로 매치를 즉시 종료(finishGrace 대기 없음)시켜 실행 시간도 짧게 유지한다.
+  {
+    const srv2 = await createServer(0, { finishGraceMs: 200, countdownStepMs: 10, disconnectGraceMs: 5000, dexFile });
+    const url2 = `http://127.0.0.1:${srv2.port}`;
+    const h1c = new TC(url2);
+    const h2c = new TC(url2);
+    const hh1 = await emitAck<{ playerId: string }>(h1c.sock, "lobby:hello", { nickname: "방장" });
+    h1c.playerId = hh1.data!.playerId;
+    const hh2 = await emitAck<{ playerId: string }>(h2c.sock, "lobby:hello", { nickname: "부방장" });
+    h2c.playerId = hh2.data!.playerId;
+    const hcr = await emitAck<{ room: any }>(
+      h1c.sock,
+      "room:create",
+      baseCfg({ name: "승계방", maxPlayers: 2, mapMode: "victory" })
+    );
+    const hRoomId: string = hcr.data!.room.roomId;
+    await emitAck(h2c.sock, "room:join", { roomId: hRoomId });
+    const hgs = await emitAck(h1c.sock, "game:start");
+    check("승계 테스트: 방장 game:start 성공", hgs.ok);
+    await h1c.waitFor<BoardInit>("board:init");
+    await h2c.waitFor<BoardInit>("board:init");
+    await h1c.waitForGo();
+    await h2c.waitForGo();
+    // 방장(h1c) 소켓 끊김 — 유예(5000ms) 시작, 방·매치는 유지된다
+    h1c.sock.disconnect();
+    await sleep(60);
+    // 상대(h2c) 가 힌트를 따라가다 승리 짝을 경로 매칭으로 연결 → 즉시 종료(유예 없음)
+    let hEnded: any = null;
+    for (let guard = 0; guard < 500 && h2c.board!.tiles.some((t) => !t.removed); guard++) {
+      const hint = findHint(h2c.board!);
+      if (!hint) throw new Error("승계 테스트 로컬 보드 힌트 없음 — 서버와 동기화 실패");
+      const isVictory = hint[0].matchKey === "__victory__";
+      const r = await emitAck(h2c.sock, "tile:match", { tileA: hint[0].tileId, tileB: hint[1].tileId });
+      if (!r.ok) throw new Error("승계 테스트 tile:match 실패: " + r.error);
+      if (isVictory) {
+        hEnded = await h2c.waitFor<any>("match:ended", 3000);
+        break;
+      }
+      await h2c.waitFor<any>("tile:matched");
+      h2c.drain("player:progress");
+      h2c.drain("board:update");
+    }
+    check("승계 테스트: 방장 유예 중 상대가 승리해 매치 종료", !!hEnded);
+    // 매치 종료 직후 room:list 로 상태를 확인 — 방장(h1c) 은 여전히 유예 중(5000ms 안 지남)이라 방에 남아있되 미접속.
+    const hlst = await emitAck<{ rooms: any[] }>(h2c.sock, "room:list");
+    check(
+      "승계 테스트: 매치 종료 후 waiting 복귀 + 인원 유지(유예 중 방장 포함)",
+      hlst.data!.rooms.find((r) => r.roomId === hRoomId)?.state === "waiting" &&
+        hlst.data!.rooms.find((r) => r.roomId === hRoomId)?.playerCount === 2
+    );
+    // 남은 접속 플레이어(h2c)에게 방장이 이양돼 game:start 가 성공해야 한다(수정 전에는 notHost).
+    const hgs2 = await emitAck(h2c.sock, "game:start");
+    check("방장 유예 중 매치 종료 → 남은 플레이어에게 방장 승계되어 game:start 성공", hgs2.ok);
+    h2c.sock.disconnect();
+    await srv2.close();
+  }
+
+  // 4) 유예 만료: 새 방 생성 → 끊김 → grace 초과 대기 → 방 제거(기존 동작)
+  const rc = new TC(url);
+  const hc = await emitAck<{ playerId: string }>(rc.sock, "lobby:hello", { nickname: "만료씨" });
+  rc.playerId = hc.data!.playerId;
+  const rcr2 = await emitAck<{ room: any }>(rc.sock, "room:create", baseCfg({ name: "만료방", maxPlayers: 2 }));
+  const expRoomId: string = rcr2.data!.room.roomId;
+  rc.sock.disconnect();
+  await sleep(900); // > 유예 500ms
+  const lstExp = await emitAck<{ rooms: any[] }>(c1.sock, "room:list");
+  check("유예 만료: 방 제거됨(기존 제거 동작)", !lstExp.data!.rooms.some((r) => r.roomId === expRoomId));
+
+  ra3.sock.disconnect();
+  rb.sock.disconnect();
 
   // ── 정리 ───────────────────────────────────────────────────
   c1.sock.disconnect();
