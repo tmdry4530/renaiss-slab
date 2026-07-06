@@ -162,7 +162,9 @@ export interface ClientToServer {
   "tile:match": (p: { tileA: number; tileB: number }, ack?: (r: Ack<Record<string, never>>) => void) => void;
   "item:use": (
     p: { type: ItemType; tiles?: [number, number] }, // scissor 는 대상 짝 지정
-    // items: 사용 수신 시점에 소모된 서버 권위 잔량 (클라 낙관적 차감의 최종 동기화용)
+    // 서치는 사용 즉시 연결 가능한 짝(승리 제외) 1쌍을 서버가 정상 매칭 파이프라인으로 제거한다.
+    // highlight: 서치가 자동 제거한 짝의 tileId(제거 연출·연결선은 tile:matched 로 별도 방송).
+    // items: 사용 수신 시점 서버 권위 잔량 (클라 낙관적 차감의 최종 동기화용 — 미소모 시 잔량 그대로).
     ack: (r: Ack<{ highlight?: [number, number]; items?: Record<ItemType, number> }>) => void
   ) => void;
   "combo:power": (p: { cardId: string }, ack: (r: Ack<Record<string, never>>) => void) => void;

@@ -7,7 +7,6 @@
 //   매치 종료 시 정리한다. 게임 중 재접속(보드 복구)은 미지원 — 데모 범위 단순화 가정.
 // ─────────────────────────────────────────────────────────────
 import {
-  findHint,
   generateBoard,
   hasMove,
   reshuffle,
@@ -16,6 +15,7 @@ import {
   upRise,
   validateMatch,
   type Board,
+  type Point,
   type Tile,
 } from "../shared/board.ts";
 import { applyComboPower, ComboTracker } from "../shared/combo.ts";
@@ -228,6 +228,17 @@ export class Match {
       return;
     }
     const [a, b] = res.tiles;
+    this.applyMatchedPair(playerId, st, a, b, res.path);
+    ack?.({ ok: true, data: {} });
+  }
+
+  /**
+   * 정상 매칭 제거 파이프라인 (tile:match·서치·가위 공용):
+   * 타일 제거 → 콤보/점수 갱신 → 미사용 파워 적재 → 도감·집계 반영 → tile:matched 방송
+   * (path 포함 시 클라 연결선 연출) → afterRemoval(승리/클리어/교착 후처리). ack 는 호출측 담당.
+   * path=[] 이면 경로 없이 강제 제거(가위)로 방송된다.
+   */
+  private applyMatchedPair(playerId: string, st: PState, a: Tile, b: Tile, path: Point[]): void {
     a.removed = true;
     b.removed = true;
     const { combo, power } = st.combo.onMatch(Date.now());
@@ -240,7 +251,7 @@ export class Match {
       this.deps.io.to(sid).emit("tile:matched", {
         tileA: a.tileId,
         tileB: b.tileId,
-        path: res.path,
+        path,
         scoreDelta,
         combo,
         ...(power ? { comboPower: power } : {}),
@@ -248,7 +259,31 @@ export class Match {
       });
     }
     this.afterRemoval(playerId, st, [a, b]);
-    ack?.({ ok: true, data: {} });
+  }
+
+  /**
+   * 서치용 연결 가능한 짝 탐색 — 승리 카드 짝은 제외(가위와 동일 정책: 승리는 경로 매칭으로만).
+   * shared/findHint 는 첫 짝만 주고 승리 제외가 안 되므로, 비승리 후보를 matchKey+layer 로 묶어
+   * shared/validateMatch(경로/free 판정 재사용)로 첫 연결 짝과 그 경로를 찾는다. 없으면 null.
+   */
+  private findSearchPair(board: Board): { a: Tile; b: Tile; path: Point[] } | null {
+    const groups = new Map<string, Tile[]>();
+    for (const t of board.tiles) {
+      if (t.removed || t.victory) continue;
+      const key = t.matchKey + "|" + t.layer; // 층 내에서만 짝 성립
+      const arr = groups.get(key) ?? [];
+      arr.push(t);
+      groups.set(key, arr);
+    }
+    for (const group of groups.values()) {
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const res = validateMatch(board, group[i].tileId, group[j].tileId);
+          if (res.ok) return { a: res.tiles[0], b: res.tiles[1], path: res.path };
+        }
+      }
+    }
+    return null;
   }
 
   /** combo:power — 대기 중 파워를 지정 카드에 적용 (경로 판정 무시, shared applyComboPower) */
@@ -290,7 +325,8 @@ export class Match {
 
   /**
    * item:use — 서치/섞기/가위. 사용 수신 시점에 소모 확정(클라 낙관적 즉시 차감과 정합).
-   * 모든 ack 에 서버 권위 잔량 items 를 실어 최종 동기화(이중 차감 방지). 가위는 유효 대상일 때만 소모.
+   * 모든 ack 에 서버 권위 잔량 items 를 실어 최종 동기화(이중 차감 방지).
+   * 서치·가위는 유효 대상(제거할 짝)이 있을 때만 소모 — 없으면 미소모로 클라 낙관적 차감이 복구된다.
    */
   handleItemUse(
     playerId: string,
@@ -320,14 +356,20 @@ export class Match {
     }
 
     if (type === "search") {
-      // 서치: 사용 수신 즉시 소모 + 매칭 가능한 짝 1쌍 반환 (본인 ack 만)
+      // 서치: 연결 가능한 짝(승리 제외) 1쌍을 서버가 찾아 정상 매칭 파이프라인으로 즉시 제거.
+      // 제거할 짝이 없으면 미소모(소모 판정을 탐색 뒤로) → 잔량 그대로 반환해 클라 낙관적 차감 복구.
+      const pair = this.findSearchPair(st.board);
+      if (!pair) {
+        ack({ ok: false, error: "매칭 가능한 짝이 없습니다", data: { items: { ...st.items } } });
+        return;
+      }
       st.items.search--;
-      const hint = findHint(st.board);
+      // highlight: 제거된 짝 위치를 잠깐 반짝이는 용도(연결선·효과·사운드는 tile:matched 가 처리)
+      this.applyMatchedPair(playerId, st, pair.a, pair.b, pair.path);
       ack({
-        ok: !!hint,
-        ...(hint ? {} : { error: "매칭 가능한 짝이 없습니다" }),
+        ok: true,
         data: {
-          ...(hint ? { highlight: [hint[0].tileId, hint[1].tileId] as [number, number] } : {}),
+          highlight: [pair.a.tileId, pair.b.tileId] as [number, number],
           items: { ...st.items },
         },
       });
@@ -374,27 +416,8 @@ export class Match {
       return;
     }
     st.items.scissor--;
-    a.removed = true;
-    b.removed = true;
-    const { combo, power } = st.combo.onMatch(Date.now());
-    const scoreDelta = matchScore(combo);
-    st.score += scoreDelta;
-    if (power) st.pendingPower = power;
-    const unlocked = this.registerRemoval(playerId, st, a.card, 1);
-    const sid = this.sockOf(playerId);
-    if (sid) {
-      // 가위는 경로가 없으므로 path: [] 로 tile:matched 전송
-      this.deps.io.to(sid).emit("tile:matched", {
-        tileA: a.tileId,
-        tileB: b.tileId,
-        path: [],
-        scoreDelta,
-        combo,
-        ...(power ? { comboPower: power } : {}),
-        ...(unlocked.length ? { dexUnlocked: unlocked } : {}),
-      });
-    }
-    this.afterRemoval(playerId, st, [a, b]);
+    // 가위는 경로 판정을 무시하고 강제 제거 → path:[] 로 tile:matched 방송(연결선 없음)
+    this.applyMatchedPair(playerId, st, a, b, []);
     ack({ ok: true, data: { items: { ...st.items } } });
   }
 

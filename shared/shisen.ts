@@ -1,6 +1,9 @@
 // 사천성(Shisen-Sho) 연결 판정. 꺾임 ≤ 2회(직선 3구간) 안에 빈 칸으로 두 타일을 잇는 경로 탐색.
-// grid: 패딩 포함 점유 격자. true = 타일 있음(통과 불가), false = 빈 칸(통과 가능). 테두리는 모두 false.
-// 좌표는 패딩 격자 기준(0..R-1, 0..C-1). 내부 타일은 1..rows, 1..cols.
+// grid: 패딩 포함 점유 격자. true = 타일 있음(통과 불가), false = 빈 칸(통과 가능).
+// 좌표는 패딩 격자 기준(0..R-1, 0..C-1)이며, 내부 타일은 1..rows, 1..cols.
+// 규칙(팀 결정): 정통 사천성처럼 테두리 밖 한 겹(패딩 링 r=0/R-1, c=0/C-1)으로 우회하지 않는다.
+// 경로는 반드시 보드 내부(1..rows, 1..cols)로만 지난다 → 연결선이 맵 밖으로 나가지 않음.
+// 서버(occupiedGrid)·클라(countRemovable)·힌트·교착감지가 모두 이 findPath 한 곳을 경유하므로 판정이 일관된다.
 
 export interface Point {
   r: number;
@@ -28,9 +31,11 @@ interface Node {
 export function findPath(grid: boolean[][], a: Point, b: Point): Point[] | null {
   const R = grid.length;
   const C = grid[0].length;
-  const inBounds = (r: number, c: number) => r >= 0 && r < R && c >= 0 && c < C;
+  // 보드 내부(1..rows, 1..cols)로만 탐색을 제한한다. 패딩 링(r=0/R-1, c=0/C-1)은 통행 불가 →
+  // 테두리 밖 우회가 사라진다(팀 결정 규칙). 양 끝 타일은 항상 내부이므로 시작·목적지는 영향 없음.
+  const inBounds = (r: number, c: number) => r >= 1 && r <= R - 2 && c >= 1 && c <= C - 2;
   const isB = (r: number, c: number) => r === b.r && c === b.c;
-  // 진입 가능: 목적지 B이거나, 격자 안 빈 칸
+  // 진입 가능: 목적지 B이거나, 보드 내부 빈 칸
   const canEnter = (r: number, c: number) => isB(r, c) || (inBounds(r, c) && !grid[r][c]);
 
   const visited = new Set<string>();

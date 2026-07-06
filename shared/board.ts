@@ -597,7 +597,11 @@ function generateUpBoard(
 }
 
 // ── 점유 격자 / 선택 가능 판정 ───────────────────────────────
-/** 해당 layer 의 점유 격자(패딩 포함). true = 미제거 타일 존재(통과 불가). */
+/**
+ * 해당 layer 의 점유 격자(패딩 포함). true = 미제거 타일 존재(통과 불가).
+ * 패딩 링(0, rows+1 / 0, cols+1)은 1-based 좌표 정렬용으로만 남겨둔다 — findPath 가 탐색을
+ * 내부(1..rows, 1..cols)로 제한하므로 테두리 밖 우회 경로는 생기지 않는다(팀 결정 규칙).
+ */
 export function occupiedGrid(board: Board, layer = 0): boolean[][] {
   const R = board.rows + 2;
   const C = board.cols + 2;

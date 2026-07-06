@@ -47,22 +47,23 @@ const P = (r: number, c: number): Point => ({ r, c });
   const ok = !!path && path[0].r === 1 && path[0].c === 1 && path[path.length - 1].c === 3;
   check("경로 반환 양끝 포함", ok, true);
 }
-// 6) 한 칸 막힌 직선은 우회 필요(연결은 됨)
+// 6) 새 규칙(경로 보드 내부 제한): 1행 보드에서 막힌 직선은 우회로가 없어 연결 불가
 {
   const g = grid(1, 5, [[1, 1], [1, 3], [1, 5]]); // (1,3) 장애물
-  check("막힌 직선 테두리 우회", canConnect(g, P(1, 1), P(1, 5)), true);
+  check("막힌 1행 직선은 보드 밖 우회 불가 → 연결 불가", canConnect(g, P(1, 1), P(1, 5)), false);
 }
 // 7) 회귀: visited 키에 turns 누락으로 정당한 2꺾임 매칭이 거부되던 버그.
-//    4×3 내부 보드, A(1,3)↔B(4,1) 이 테두리 U자(우→하→좌) 2꺾임 경로로 연결돼야 한다.
-//      r1: # . #   r2: # # .   r3: # # #   r4: # . .
+//    3×3 보드, 1열이 전부 점유 — A(1,1)↔B(3,1) 은 내부 ㄷ자(우→하→좌) 2꺾임으로 연결돼야 한다.
+//      r1: # . .   r2: # . .   r3: # . .
 {
-  const occ: [number, number][] = [[1, 1], [1, 3], [2, 1], [2, 2], [3, 1], [3, 2], [3, 3], [4, 1]];
-  const g = grid(4, 3, occ);
-  const path = findPath(g, P(1, 3), P(4, 1));
-  check("테두리 U자 2꺾임 경로 연결(visited turns 회귀)", !!path, true);
+  const occ: [number, number][] = [[1, 1], [2, 1], [3, 1]];
+  const g = grid(3, 3, occ);
+  const path = findPath(g, P(1, 1), P(3, 1));
+  check("내부 ㄷ자 2꺾임 경로 연결(visited turns 회귀)", !!path, true);
   check(
-    "U자 경로 양끝이 A·B",
-    !!path && path[0].r === 1 && path[0].c === 3 && path[path.length - 1].r === 4 && path[path.length - 1].c === 1,
+    "ㄷ자 경로가 전부 보드 내부(1..3)",
+    !!path && path.every((p) => p.r >= 1 && p.r <= 3 && p.c >= 1 && p.c <= 3) &&
+      path[0].r === 1 && path[0].c === 1 && path[path.length - 1].r === 3 && path[path.length - 1].c === 1,
     true
   );
 }

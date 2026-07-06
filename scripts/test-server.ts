@@ -373,13 +373,28 @@ async function main(): Promise<void> {
   await c1.waitForGo(); // GO 이후에만 아이템 사용 가능
   await c2.waitForGo();
 
-  // 서치: 매칭 가능한 짝 하이라이트 (본인 ack 만)
+  // 서치: 연결 가능한 짝(승리 제외)을 서버가 찾아 정상 매칭 파이프라인으로 즉시 제거
   const se = await emitAck<{ highlight?: [number, number] }>(c1.sock, "item:use", { type: "search" });
   const hi = se.data?.highlight;
   const hiSame =
     !!hi &&
     c1.board!.tiles.find((t) => t.tileId === hi[0])?.matchKey === c1.board!.tiles.find((t) => t.tileId === hi[1])?.matchKey;
-  check("서치: 같은 카드 짝 하이라이트", se.ok && hiSame);
+  check("서치: ack ok + 같은 카드 짝 하이라이트", se.ok && hiSame);
+  // ack 직후 본인 소켓에 tile:matched 가 뒤따라 도착(같은 스트림상 ack 보다 먼저 emit 됨) — 여기서 소비해
+  // 이후 가위 검증의 waitFor("tile:matched") 가 이 이벤트를 대신 집어가지 않게 한다.
+  const seEv = await c1.waitFor<any>("tile:matched");
+  const seIdsMatch =
+    !!hi && ((seEv.tileA === hi[0] && seEv.tileB === hi[1]) || (seEv.tileA === hi[1] && seEv.tileB === hi[0]));
+  check(
+    "서치: tile:matched 로 즉시 제거 방송 (path 길이≥2, tileId 일치)",
+    Array.isArray(seEv.path) && seEv.path.length >= 2 && seIdsMatch
+  );
+  check(
+    "서치: 제거된 타일이 보드에서 즉시 사라짐",
+    !!hi &&
+      c1.board!.tiles.find((t) => t.tileId === hi[0])?.removed === true &&
+      c1.board!.tiles.find((t) => t.tileId === hi[1])?.removed === true
+  );
 
   // 섞기: board:update reason=shuffle
   c1.drain("board:update");
@@ -399,10 +414,16 @@ async function main(): Promise<void> {
     check("가위 소진(게임당 1개) error", !sc2.ok);
   }
   // 서치 소진: 앞서 1회 사용 → 2회 추가 사용 후 4회차 거부
+  // se2/se3 도 성공 시 각각 짝을 제거하고 tile:matched(+드물게 board:update 재셔플) 를 방송하므로,
+  // 이후 스텝(방 이탈/승리 모드 등)이 잔여 이벤트로 오염되지 않게 즉시 drain 한다.
   const se2 = await emitAck(c1.sock, "item:use", { type: "search" });
+  if (se2.ok) c1.drain("tile:matched");
   const se3 = await emitAck(c1.sock, "item:use", { type: "search" });
+  if (se3.ok) c1.drain("tile:matched");
   const se4 = await emitAck(c1.sock, "item:use", { type: "search" });
   check("서치 소진(게임당 3개) error", se2.ok && se3.ok && !se4.ok);
+  c1.drain("board:update");
+  c1.drain("player:progress");
 
   // 게임 중 전원 이탈 → 방 삭제
   c1.sock.emit("room:leave");
