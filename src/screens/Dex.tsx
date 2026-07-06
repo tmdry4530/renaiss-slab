@@ -1,6 +1,6 @@
 // F-12/13/14 카드 도감 — 포켓몬/원피스 탭, 달성률, 등록/진행/미발견 그리드,
 // 상세 패널(이미지 우측 배치 + 하단 간단 정보 + "자세히 보기" → Renaiss 마켓), SBT 뱃지·보상
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CardPool, GameCard } from "../../shared/cards.ts";
 import { marketUrl, usd } from "../../shared/cards.ts";
 import {
@@ -14,6 +14,22 @@ import { errText, gameLabel } from "../labels.ts";
 import { hasRealPrice } from "../ui.tsx";
 
 type Tab = "pokemon" | "one-piece";
+
+const DEX_PAGE_SIZE = 60;
+
+// 페이지 번호 압축 표기: 처음/끝 + 현재 페이지 ±1 + 생략(…)
+function pageList(current: number, total: number): (number | "…")[] {
+  const keep = new Set<number>([1, total, current]);
+  if (current - 1 >= 1) keep.add(current - 1);
+  if (current + 1 <= total) keep.add(current + 1);
+  const sorted = Array.from(keep).sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
+    out.push(sorted[i]);
+  }
+  return out;
+}
 
 interface Props {
   pool: CardPool | null;
@@ -29,6 +45,8 @@ export default function Dex({ pool, onBack, flash }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [page, setPage] = useState(1);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   // 도감 데이터 로드
   useEffect(() => {
@@ -55,6 +73,22 @@ export default function Dex({ pool, onBack, flash }: Props) {
     () => (selected ? cards.find((c) => c.cardId === selected) ?? null : null),
     [cards, selected]
   );
+
+  const totalPages = Math.max(1, Math.ceil(cards.length / DEX_PAGE_SIZE));
+  const pageSafe = Math.min(Math.max(1, page), totalPages);
+  const pageCards = useMemo(
+    () => cards.slice((pageSafe - 1) * DEX_PAGE_SIZE, pageSafe * DEX_PAGE_SIZE),
+    [cards, pageSafe]
+  );
+  const rangeStart = cards.length === 0 ? 0 : (pageSafe - 1) * DEX_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(pageSafe * DEX_PAGE_SIZE, cards.length);
+
+  function goToPage(p: number) {
+    const clamped = Math.min(Math.max(1, p), totalPages);
+    setPage(clamped);
+    setSelected(null);
+    gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function claim(category: Tab) {
     if (claiming) return;
@@ -96,6 +130,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
               onClick={() => {
                 setTab(t);
                 setSelected(null);
+                setPage(1);
               }}
             >
               <span className={`badge ${t}`}>{gameLabel(t)}</span>
@@ -172,8 +207,8 @@ export default function Dex({ pool, onBack, flash }: Props) {
 
       {/* 카드 그리드: 등록(컬러 + 테두리/체크) / 진행 중(컬러 + n/10 뱃지) / 미발견(실루엣 ?) */}
       {pool && loaded && (
-        <div className="dex-grid">
-          {cards.map((c) => {
+        <div className="dex-grid" ref={gridRef}>
+          {pageCards.map((c) => {
             const st = statusOf(c);
             const e = entries[c.cardId];
             return (
@@ -210,6 +245,48 @@ export default function Dex({ pool, onBack, flash }: Props) {
             );
           })}
         </div>
+      )}
+
+      {/* 페이지네이션: 압축 표기(처음/끝 + 현재 ±1 + …) */}
+      {pool && loaded && (
+        <>
+          {totalPages > 1 && (
+            <div className="dex-pagination">
+              <button
+                className="ghost"
+                disabled={pageSafe <= 1}
+                onClick={() => goToPage(pageSafe - 1)}
+              >
+                ← 이전
+              </button>
+              <div className="dex-page-nums">
+                {pageList(pageSafe, totalPages).map((p, i) =>
+                  p === "…" ? (
+                    <span key={`e${i}`} className="dex-page-ellipsis">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      className={`dex-page-btn ${p === pageSafe ? "on" : ""}`}
+                      onClick={() => goToPage(p)}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              </div>
+              <button
+                className="ghost"
+                disabled={pageSafe >= totalPages}
+                onClick={() => goToPage(pageSafe + 1)}
+              >
+                다음 →
+              </button>
+            </div>
+          )}
+          <p className="muted small dex-page-info">
+            {rangeStart}–{rangeEnd} / 총 {cards.length}장
+          </p>
+        </>
       )}
     </section>
   );
