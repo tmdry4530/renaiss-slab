@@ -1,6 +1,6 @@
 // 화면 2 — 대기실(방). 3컬럼: 좌 플레이어 슬롯 / 중앙 방제목·맵 프리뷰·시작 / 우 사이드바.
 // 맵 선택은 Room 내부 오버레이(MapSelect)로 처리. 기존 room props/room:config/game:start/leave 계약 보존.
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { RoomConfig, RoomDetail } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
 import { errText, modeLabel, stateLabel } from "../labels.ts";
@@ -19,17 +19,29 @@ const AVATARS = ["🐵", "🐉", "🦊", "⭐", "🐱", "🐼"];
 export default function Room({ room, myId, onLeave, flash }: Props) {
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
-  // 선택된 프리셋(로컬 표시용). 초기값 = 현재 방 설정과 일치하는 프리셋(없으면 null).
-  const [picked, setPicked] = useState<MapPreset | null>(
-    () =>
+
+  // 방 설정(mapMode/difficulty/game/theme)에 맞는 프리셋 탐색 — 초기 마운트/재동기화 공용.
+  function findPreset(r: RoomDetail): MapPreset | null {
+    return (
       MAP_PRESETS.find(
         (p) =>
-          p.mapMode === room.mapMode &&
-          p.difficulty === room.difficulty &&
-          p.game === room.game &&
-          (room.theme ? p.theme === room.theme : true)
+          p.mapMode === r.mapMode &&
+          p.difficulty === r.difficulty &&
+          p.game === r.game &&
+          (r.theme ? p.theme === r.theme : true)
       ) ?? null
-  );
+    );
+  }
+
+  // 선택된 프리셋(로컬 표시용). 초기값 = 현재 방 설정과 일치하는 프리셋(없으면 null).
+  const [picked, setPicked] = useState<MapPreset | null>(() => findPreset(room));
+
+  // room prop이 바뀌면(참여자의 room:update 수신 포함) picked를 재동기화한다.
+  // 방장이 확정 직후 낙관적으로 세팅한 picked도 room:update 도착 시 이 값으로 재확인되어,
+  // 결과적으로 room의 실제 설정이 항상 picked보다 우선한다.
+  useEffect(() => {
+    setPicked(findPreset(room));
+  }, [room.mapMode, room.difficulty, room.game, room.theme]);
 
   const me = room.players.find((p) => p.playerId === myId);
   const isHost = !!me?.isHost;

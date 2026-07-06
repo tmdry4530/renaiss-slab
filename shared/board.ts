@@ -72,8 +72,9 @@ export function toTileStates(board: Board): TileState[] {
 }
 
 // ── 난이도 ───────────────────────────────────────────────────
-// F-05: 난이도별 카드 종류 수 차등 — easy 는 종류가 적어 짝이 많이 중복(쉬움),
-// hard 는 종류가 많아 같은 카드 찾기가 어려움. reserveRows 는 UP 모드 앞으로 상승할 줄 수(= "남은 줄").
+// F-05: 난이도별 카드 종류 수 차등 — cardKinds 는 각 난이도 보드의 최대 쌍 수와 같아
+// (아래 참고) 판당 카드가 사실상 전부 유니크 쌍이 되며, 난이도 차이는 종류 중복 빈도가 아니라
+// 보드 크기(칸 수·기억해야 할 짝 수)로 갈린다. reserveRows 는 UP 모드 앞으로 상승할 줄 수(= "남은 줄").
 export interface Difficulty {
   key: DifficultyKey;
   label: string;
@@ -83,10 +84,13 @@ export interface Difficulty {
   reserveRows: number; // UP 모드 예비(상승) 줄 수 = 남은 줄 (easy6/normal8/hard10)
 }
 
+// cardKinds 는 각 난이도 보드의 최대 쌍 수(rows*cols/2)에 맞춰 상향 — 카드 풀이 1,300장+로
+// 충분해 종류 수 상한이 곧 병목이 아니므로, 판당 카드가 사실상 전부 유니크 쌍이 되게 한다
+// (풀 부족 시에는 kindCount = Math.min(cardKinds, usable.length) 로 자동 캡됨).
 export const DIFFICULTIES: Difficulty[] = [
-  { key: "easy", label: "쉬움 (6×4)", rows: 4, cols: 6, cardKinds: 6, reserveRows: 6 },
-  { key: "normal", label: "보통 (8×6)", rows: 6, cols: 8, cardKinds: 16, reserveRows: 8 },
-  { key: "hard", label: "어려움 (10×8)", rows: 8, cols: 10, cardKinds: 30, reserveRows: 10 },
+  { key: "easy", label: "쉬움 (6×4)", rows: 4, cols: 6, cardKinds: 12, reserveRows: 6 },
+  { key: "normal", label: "보통 (8×6)", rows: 6, cols: 8, cardKinds: 24, reserveRows: 8 },
+  { key: "hard", label: "어려움 (10×8)", rows: 8, cols: 10, cardKinds: 40, reserveRows: 10 },
 ];
 
 // UP 모드: 시작 시 하단에 미리 깔아두는 줄 수 (rows 보다 작게 캡). 나머지 상단은 빈 상태로 시작.
@@ -531,11 +535,16 @@ function generateUpBoard(
   idxOf: (card: GameCard) => number,
   rnd: () => number
 ): Board {
-  // 한 줄 덱: cols/2 페어 → 줄 안에서 셔플(줄 내부 짝 성립 → 전체 짝수 유지)
+  // 한 줄 덱: cols/2 페어 → 줄 안에서 셔플(줄 내부 짝 성립 → 전체 짝수 유지).
+  // kinds 인덱스를 줄마다 랜덤 회전(offset)해 모듈로로 고르므로, kinds.length(cardKinds 상향분)가
+  // 줄당 페어 수(cols/2)보다 크기만 하면 한 줄 안에서는 카드 종류가 항상 겹치지 않는다
+  // (기존의 rnd()*kinds.length 완전 랜덤 추출은 종류 수를 늘려도 한 줄 내 중복이 흔했음).
   const makeRowDeck = (): GameCard[] => {
+    const pairs = diff.cols / 2;
+    const offset = Math.floor(rnd() * kinds.length);
     const rowDeck: GameCard[] = [];
-    for (let p = 0; p < diff.cols / 2; p++) {
-      const card = kinds[Math.floor(rnd() * kinds.length)];
+    for (let p = 0; p < pairs; p++) {
+      const card = kinds[(offset + p) % kinds.length];
       rowDeck.push(card, card);
     }
     return seededShuffle(rowDeck, rnd);

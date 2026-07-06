@@ -25,7 +25,7 @@ export class PoolStore {
     // 사용해 언어 통일을 유지하고, 부족하면 그 게임에 한해 전체 언어 카드를 포함해 종류를 늘린다.
     // 보드는 항상 "동일 카드(같은 이미지) 쌍"을 매칭하므로 언어 혼재로 인한 오매칭 위험은 없다.
     // → 프리페치로 일본어 풀이 커지면 자동으로 일본어 전용으로 복귀한다.
-    const VARIETY_TARGET = 30; // hard 난이도 cardKinds 상한과 동일
+    const VARIETY_TARGET = 40; // hard 난이도 cardKinds 상한과 동일 (shared/board.ts DIFFICULTIES)
     const usable = (cards: GameCard[], game: "pokemon" | "one-piece") =>
       cards.filter((c) => c.game === game && c.imageUrl);
     const jp = this.pool.cards.filter((c) => c.language === "Japanese");

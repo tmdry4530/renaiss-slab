@@ -690,15 +690,25 @@ h2 { font-size: 16px; margin: 0; }
   cursor: pointer; padding: 0; text-align: left; transition: transform 0.12s, border-color 0.12s;
 }
 .dex-card:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--accent); }
+.dex-card.reg { border-color: rgba(34,197,94,0.5); }
 .dex-card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(110,168,254,0.4); }
 .dex-card:disabled { cursor: default; }
 .dex-thumb { position: relative; aspect-ratio: 3 / 4; background: var(--panel2); }
 .dex-thumb img { width: 100%; height: 100%; object-fit: contain; }
-.dex-card.prog .dex-thumb img { filter: grayscale(1) brightness(0.8); }
 .dex-card.unk .dex-thumb img { filter: brightness(0) grayscale(1); opacity: 0.5; }
 .dex-q {
   position: absolute; inset: 0; display: grid; place-items: center;
   font-size: 34px; font-weight: 900; color: var(--muted); text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+}
+.dex-progress-badge {
+  position: absolute; top: 6px; right: 6px; font-size: 10.5px; font-weight: 800;
+  padding: 2px 7px; border-radius: 20px; background: rgba(0,0,0,0.7);
+  color: var(--accent); border: 1px solid rgba(245,158,11,0.55);
+}
+.dex-reg-badge {
+  position: absolute; top: 6px; right: 6px; width: 20px; height: 20px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--up); color: #07160e; font-size: 12px; font-weight: 900; line-height: 1;
 }
 .dex-meta { padding: 8px 10px 10px; display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; }
 .dex-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

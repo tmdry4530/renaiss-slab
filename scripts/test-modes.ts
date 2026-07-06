@@ -244,7 +244,8 @@ console.log("[콤보]");
   check("5/15 → pair, 10/20 → clear", JSON.stringify(powers) === JSON.stringify(["5:pair:5", "10:clear:10", "15:pair:15", "20:clear:20"]));
   check("그 외 콤보는 발동 없음", comboPowerAt(6) === undefined && comboPowerAt(4) === undefined);
   // 파워 적용: pair (경로 무관 1쌍 제거)
-  const b = generateBoard(pool, "normal", 51, { mask: "rect" });
+  // cardKinds 상향으로 일반 보드는 전부 유니크 쌍 → 풀을 6장으로 잘라 의도적으로 중복(종류당 4쌍)을 만든다
+  const b = generateBoard(pool.slice(0, 6), "normal", 51, { mask: "rect" });
   const anyCard = b.cards.find((c) => b.tiles.filter((x) => !x.removed && x.matchKey === c.matchKey).length >= 4)!;
   const beforeN = b.tiles.filter((x) => !x.removed && x.matchKey === anyCard.matchKey).length;
   const removedPair = applyComboPower(b, anyCard.cardId, "pair");

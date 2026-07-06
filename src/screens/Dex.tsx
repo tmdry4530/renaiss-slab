@@ -170,7 +170,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
         </div>
       )}
 
-      {/* 카드 그리드: 등록(컬러) / 진행 중(흑백 + n/10) / 미발견(실루엣 ?) */}
+      {/* 카드 그리드: 등록(컬러 + 테두리/체크) / 진행 중(컬러 + n/10 뱃지) / 미발견(실루엣 ?) */}
       {pool && loaded && (
         <div className="dex-grid">
           {cards.map((c) => {
@@ -187,6 +187,10 @@ export default function Dex({ pool, onBack, flash }: Props) {
                 <div className="dex-thumb">
                   <img src={c.imageUrlThumb || c.imageUrl} alt={st === "unk" ? "미발견" : c.name} loading="lazy" />
                   {st === "unk" && <span className="dex-q">?</span>}
+                  {st === "prog" && (
+                    <span className="dex-progress-badge">{e!.count}/{DEX_REGISTER_COUNT}</span>
+                  )}
+                  {st === "reg" && <span className="dex-reg-badge">✓</span>}
                 </div>
                 <div className="dex-meta">
                   {st === "unk" ? (
