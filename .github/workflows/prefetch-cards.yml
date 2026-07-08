@@ -5,9 +5,10 @@ name: prefetch-cards
 # 트리거가 push 가 아니므로(스케줄/수동) 이 워크플로의 커밋이 자신을 다시 트리거하지 않는다.
 
 on:
-  schedule:
-    - cron: "0 */6 * * *" # 6시간마다 (UTC)
-  workflow_dispatch: {}     # 수동 실행 허용
+  # 카드 풀이 충분히 확보되어 자동 누적 스케줄은 중단(2026-07). 필요 시 수동 실행만 사용.
+  # schedule:
+  #   - cron: "0 */6 * * *" # 6시간마다 (UTC)
+  workflow_dispatch: {}     # 수동 실행만 허용
 
 permissions:
   contents: write           # card-pool.json 커밋/푸시
