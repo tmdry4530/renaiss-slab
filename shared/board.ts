@@ -29,6 +29,99 @@ export function seededShuffle<T>(arr: T[], rnd: () => number): T[] {
   return a;
 }
 
+// 4방향(상하좌우) 오프셋 — 대각은 인접 대상 아님.
+const ORTHO: readonly (readonly [number, number])[] = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+];
+
+/**
+ * 인접 동일 완화: 격자 위 셀 배치(cells 와 평행한 assign)에서 상하좌우 4방향으로 붙은 동일 matchKey
+ * 쌍의 수를 결정적 그리디 스왑으로 줄인 새 배치를 반환한다. cells 에 없는 좌표(승리 셀·다른 층·마스크
+ * 빈칸)는 이웃으로 잡히지 않아 자연히 완화 대상에서 빠진다(경계·홀은 통과). 대각 인접은 세지 않는다.
+ *
+ * 불변식: assign 의 카드 멀티셋을 보존한다(자리만 교환) — matchKey 짝수·cardIdx 정합·풀이 종류가 그대로.
+ * 결정성: 후보 순회 순서를 rnd 로 한 번만 섞고(스왑 판정 자체엔 rnd 미사용) 같은 시드 → 항상 같은 결과.
+ * 비용: 충돌(동일 이웃 있는) 셀만 후보 전체와 비교 → 충돌이 희소한 일반 보드는 사실상 준선형,
+ *       최악(종류 극소·중복 과다)에도 패스당 O(n²)·이웃 상수(≤4)에 개선 멈추면 조기 종료. n≤80 라 저비용.
+ *
+ * floor: 남길 최소 인접 동일 쌍 수(기본 0). 사천성은 "빈 칸으로만 통과"하므로 빈틈 없이 가득 찬 판에서
+ *   인접 동일 쌍을 0 으로 만들면 첫 수(0꺾임 인접 매칭)가 사라져 시작 즉시 교착이 된다. 그런 판은 floor=1 로
+ *   호출해 "연결 가능한 인접 동일 쌍 한 개"를 남기면 hasMove 가 보장된다(인접 쌍은 항상 연결 가능).
+ */
+export function reduceAdjacency<T extends { matchKey: string }>(
+  cells: Point[],
+  assign: T[],
+  rnd: () => number,
+  floor = 0
+): T[] {
+  const n = cells.length;
+  const a = assign.slice();
+  if (n < 3) return a; // 0/1/2 칸은 스왑으로 인접을 줄일 여지가 없다
+  const posIndex = new Map<string, number>();
+  for (let i = 0; i < n; i++) posIndex.set(cells[i].r + "," + cells[i].c, i);
+  // 각 셀의 상하좌우 이웃 셀 인덱스(같은 cells 집합 내부에 실제로 존재하는 것만)
+  const nbrs: number[][] = cells.map((p) => {
+    const out: number[] = [];
+    for (const [dr, dc] of ORTHO) {
+      const j = posIndex.get(p.r + dr + "," + (p.c + dc));
+      if (j !== undefined) out.push(j);
+    }
+    return out;
+  });
+  const incident = (i: number): number => {
+    let cnt = 0;
+    for (const j of nbrs[i]) if (a[i].matchKey === a[j].matchKey) cnt++;
+    return cnt;
+  };
+  // i·j 두 셀에 걸린 변들의 동일 쌍 수(i-j 변은 한 번만 셈). 스왑은 이 국소량만 바꾼다.
+  const around = (i: number, j: number): number => {
+    let cnt = 0;
+    for (const k of nbrs[i]) if (a[i].matchKey === a[k].matchKey) cnt++;
+    for (const k of nbrs[j]) {
+      if (k === i) continue; // i-j 변 중복 방지
+      if (a[j].matchKey === a[k].matchKey) cnt++;
+    }
+    return cnt;
+  };
+  // 현재 인접 동일 쌍 총수(변 하나 = 쌍 하나). 각 변이 i·j 양쪽에서 세어지므로 /2.
+  let total = 0;
+  for (let i = 0; i < n; i++) total += incident(i);
+  total = total / 2;
+  const order = seededShuffle([...Array(n).keys()], rnd);
+  // 각 충돌 셀마다 "가장 많이 줄이는" 스왑을 적용하는 패스를, 개선이 멈출 때까지 반복(상한 n).
+  // 단, 총수가 floor 밑으로 내려가는 스왑은 채택하지 않아(첫 수 보장) floor 개 인접 쌍은 남긴다.
+  for (let pass = 0; pass < n && total > floor; pass++) {
+    let improved = false;
+    for (const i of order) {
+      if (total <= floor) break;
+      if (incident(i) === 0) continue; // 인접 동일이 없는 셀은 건드릴 필요 없음
+      let bestJ = -1;
+      let bestDelta = 0;
+      for (const j of order) {
+        if (j === i || a[i].matchKey === a[j].matchKey) continue; // 동일 카드 교환은 무의미
+        const before = around(i, j);
+        [a[i], a[j]] = [a[j], a[i]];
+        const delta = around(i, j) - before;
+        [a[i], a[j]] = [a[j], a[i]]; // 판정용 롤백
+        if (delta < bestDelta && total + delta >= floor) {
+          bestDelta = delta;
+          bestJ = j;
+        }
+      }
+      if (bestJ >= 0) {
+        [a[i], a[bestJ]] = [a[bestJ], a[i]];
+        total += bestDelta;
+        improved = true;
+      }
+    }
+    if (!improved) break;
+  }
+  return a;
+}
+
 // ── 타일/보드 모델 ───────────────────────────────────────────
 // protocol.TileState 와 호환되는 필드 + 엔진 내부 편의용 card 참조.
 export interface Tile {
@@ -297,6 +390,19 @@ function shanghaiUpperCells(mask: boolean[][], rows: number, cols: number): Poin
 export interface GenerateOpts {
   mapMode?: MapMode; // 기본 "normal"
   mask?: MaskKind; // 지정 시 강제 (예: "rect"). 미지정 시 시드 기반 랜덤 선택
+  // 인접 동일 완화(reduceAdjacency) 사용 여부. 기본 on. false 로 끄면 순수 셔플 배치(완화 전 baseline)를
+  // 그대로 쓴다 — 주로 퍼즈/테스트에서 완화 전·후 인접 쌍 수를 비교하기 위한 훅.
+  adjacencyReduction?: boolean;
+  // 퍼즈/테스트 계측 훅(선택). 넘기면 생성 과정에서 시도·폴백·재셔플 횟수를 채워준다(프로덕션 미사용).
+  stats?: GenerateStats;
+}
+
+// 생성 계측(테스트 전용): attempts=성공까지 시도 수, floorSafe=인접 쌍 1개 남긴 배치(floor=1)를 쓴
+// 시도 수(가득 찬 판에서 정상 동작), reshuffled=reshuffleWith 호출 수.
+export interface GenerateStats {
+  attempts: number;
+  floorSafe: number;
+  reshuffled: number;
 }
 
 /**
@@ -368,13 +474,21 @@ export function generateBoard(
   for (const k of kinds) idxOf(k);
   if (vCard) idxOf(vCard); // 승리 합성 카드도 cards[]에 1회 등록
 
+  // 인접 동일 완화 on/off (기본 on). 완화는 배치 셔플 뒤 마지막 단계라, 끄면 완화 전 baseline 배치를 그대로 쓴다.
+  const reduce = opts.adjacencyReduction !== false;
+  const stats = opts.stats; // 테스트 계측 훅(선택)
+
   // UP 모드: 초기엔 하단 일부 줄만 배치 + 앞으로 상승할 예비 줄 덱 (별도 경로)
   if (mapMode === "up") {
-    return generateUpBoard(diff, seed, maskKind, mask, kinds, cardsList, idxOf, rnd);
+    return generateUpBoard(diff, seed, maskKind, mask, kinds, cardsList, idxOf, rnd, reduce, stats);
   }
 
-  // 배치 시도: 시작부터 최소 한 수 보장 (실패 시 재셔플 → 재시도, 모두 시드 rnd 기반)
+  // 배치 시도: 시작부터 최소 한 수 보장 (실패 시 재셔플 → 재시도, 모두 시드 rnd 기반).
+  // 각 시도는 층별로 baseline(순수 셔플) 과 arranged(reduceAdjacency 로 인접 동일 완화) 두 배치를 준비하고,
+  // 완화 배치를 우선 채택하되 hasMove 게이트를 통과할 때만 확정한다. 완화가 solvable 을 깨는 드문 경우엔
+  // baseline 으로 폴백해 데드락 안전성(불변식 2)을 기존 로직과 동일하게 보장한다. "승" 타일은 완화 대상 제외.
   for (let attempt = 0; attempt < 60; attempt++) {
+    if (stats) stats.attempts = attempt + 1;
     // 승리 모드: 매 시도마다 "승" 셀을 내부·분산으로 다시 고른다(시작 시 짝이 붙어
     // 즉시 종료되던 문제 방지 — 연결 가능한 배치는 아래 게이트에서 걸러 다음 시도로 넘긴다).
     const victoryCells =
@@ -382,59 +496,50 @@ export function generateBoard(
         ? pickVictoryCells(layerCells[0], Math.min(victoryPairs * 2, layerCells[0].length), rnd)
         : [];
     const victorySet = new Set(victoryCells.map((p) => `${p.r},${p.c}`));
-    const tiles: Tile[] = [];
-    let tileId = 0;
-    for (let layer = 0; layer < layerCells.length; layer++) {
-      const cells = layerCells[layer];
+
+    // 층별 배치 계획: "승" 셀을 뺀 이동 가능 셀 + 채울 페어 덱(baseline 셔플)과 완화 배치(arranged).
+    const plans = layerCells.map((cells, layer) => {
       const layerKinds = kindsByLayer[layer];
-      if (layer === 0 && vCard && victoryCells.length > 0) {
-        // "승" 카드는 미리 고른 내부·분산 셀에 고정, 나머지 셀에 일반 페어를 채운다.
-        const normalCells = cells.filter((cell) => !victorySet.has(`${cell.r},${cell.c}`));
-        const normPairs = normalCells.length / 2;
-        const deck: GameCard[] = [];
-        for (let p = 0; p < normPairs; p++) {
-          const card = layerKinds[p % layerKinds.length];
-          deck.push(card, card);
+      const movableCells =
+        layer === 0 && victoryCells.length > 0
+          ? cells.filter((cell) => !victorySet.has(`${cell.r},${cell.c}`))
+          : cells;
+      const pairs = movableCells.length / 2;
+      const deck: GameCard[] = [];
+      for (let p = 0; p < pairs; p++) {
+        const card = layerKinds[p % layerKinds.length];
+        deck.push(card, card);
+      }
+      const baseline = seededShuffle(deck, rnd);
+      // 같은 층 이동 가능 셀 안에서만 결정적 스왑(층 간 이동·"승" 이동 없음, 멀티셋 보존).
+      const arranged = reduce ? reduceAdjacency(movableCells, baseline, rnd) : baseline;
+      return { layer, movableCells, baseline, arranged };
+    });
+
+    // 층별 배치(assign)로 타일을 만든다. "승" 셀은 항상 고정 배치(layer 0).
+    const buildBoard = (assignByLayer: GameCard[][]): Board => {
+      const tiles: Tile[] = [];
+      let tileId = 0;
+      for (const plan of plans) {
+        if (plan.layer === 0 && vCard && victoryCells.length > 0) {
+          for (const cell of victoryCells) {
+            tiles.push({
+              tileId: tileId++,
+              cardIdx: idxOf(vCard),
+              cardId: vCard.cardId,
+              matchKey: vCard.matchKey,
+              r: cell.r,
+              c: cell.c,
+              layer: 0,
+              removed: false,
+              victory: true,
+              card: vCard,
+            });
+          }
         }
-        const shuffled = seededShuffle(deck, rnd);
-        for (const cell of victoryCells) {
-          tiles.push({
-            tileId: tileId++,
-            cardIdx: idxOf(vCard),
-            cardId: vCard.cardId,
-            matchKey: vCard.matchKey,
-            r: cell.r,
-            c: cell.c,
-            layer: 0,
-            removed: false,
-            victory: true,
-            card: vCard,
-          });
-        }
-        normalCells.forEach((cell, i) => {
-          const card = shuffled[i];
-          tiles.push({
-            tileId: tileId++,
-            cardIdx: idxOf(card),
-            cardId: card.cardId,
-            matchKey: card.matchKey,
-            r: cell.r,
-            c: cell.c,
-            layer: 0,
-            removed: false,
-            card,
-          });
-        });
-      } else {
-        const pairs = cells.length / 2;
-        const deck: GameCard[] = [];
-        for (let p = 0; p < pairs; p++) {
-          const card = layerKinds[p % layerKinds.length];
-          deck.push(card, card);
-        }
-        const shuffled = seededShuffle(deck, rnd);
-        cells.forEach((cell, i) => {
-          const card = shuffled[i];
+        const assign = assignByLayer[plan.layer];
+        plan.movableCells.forEach((cell, i) => {
+          const card = assign[i];
           tiles.push({
             tileId: tileId++,
             cardIdx: idxOf(card),
@@ -442,35 +547,65 @@ export function generateBoard(
             matchKey: card.matchKey,
             r: cell.r,
             c: cell.c,
-            layer,
+            layer: plan.layer,
             removed: false,
             card,
           });
         });
       }
-    }
-    const board: Board = {
-      rows: diff.rows,
-      cols: diff.cols,
-      mapMode,
-      difficulty: diff.key,
-      seed,
-      maskKind,
-      mask,
-      tiles,
-      cards: cardsList,
-      reserve: [],
-      nextTileId: tileId,
+      return {
+        rows: diff.rows,
+        cols: diff.cols,
+        mapMode,
+        difficulty: diff.key,
+        seed,
+        maskKind,
+        mask,
+        tiles,
+        cards: cardsList,
+        reserve: [],
+        nextTileId: tileId,
+      };
     };
+
+    const arrangedAll = plans.map((p) => p.arranged);
+    // 가득 찬(빈틈 없는) 판을 인접 동일 0 으로 만들면 첫 수가 사라진다 → hasMove 실패 시 최상단 층에 인접 쌍
+    // 한 개를 남긴 완화 배치(floor=1)로 대체한다. 인접 쌍은 항상 연결 가능하고, 최상단 층(상하이 위층·그 외
+    // layer0)은 늘 free 라 그 쌍이 곧 첫 수가 된다 → 이 배치는 solvable 이 보장된다.
+    const topLayer = plans.length - 1;
+    const safeAll = (): GameCard[][] => {
+      const safe = arrangedAll.slice();
+      safe[topLayer] = reduce
+        ? reduceAdjacency(plans[topLayer].movableCells, plans[topLayer].baseline, rnd, 1)
+        : plans[topLayer].baseline;
+      return safe;
+    };
+
+    const arranged = buildBoard(arrangedAll);
     if (vCard && victoryCells.length > 0) {
-      // 승리 모드: 시작 시 "승" 짝이 서로 이어지면(=즉시 종료 위험) 이번 배치를 버리고 재시도.
-      // reshuffleWith 는 "승" 위치를 흩뜨리므로 쓰지 않고, 다음 시도에서 셀·덱을 다시 고른다.
-      if (!victoryPairConnectable(board) && hasMove(board)) return board;
-      continue;
+      // "승" 짝 연결 여부는 셀 기하만으로 정해져 배치와 무관 → arranged 로 판정.
+      // 시작 시 "승" 짝이 이어지면(=즉시 종료 위험) 이번 배치를 버리고 다음 시도에서 셀을 다시 고른다.
+      if (victoryPairConnectable(arranged)) continue;
+      if (hasMove(arranged)) return arranged;
+      if (stats) stats.floorSafe++;
+      // "승" 셀 위치는 배치와 무관하게 동일 → 위에서 victoryPairConnectable=false 가 그대로 성립(재검사 불필요).
+      const safe = buildBoard(safeAll()); // 인접 쌍 1개 남긴 배치로 (일반 카드) 첫 수 확보
+      if (hasMove(safe)) return safe;
+      const baseline = buildBoard(plans.map((p) => p.baseline));
+      if (hasMove(baseline)) return baseline;
+      continue; // reshuffleWith 는 "승" 위치를 흩뜨리므로 쓰지 않고 다음 시도로
     }
-    if (hasMove(board)) return board;
-    reshuffleWith(board, rnd);
-    if (hasMove(board)) return board;
+    if (hasMove(arranged)) return arranged;
+    if (stats) stats.floorSafe++;
+    // 완화가 판을 첫 수 없는 상태로 만든 경우: 최상단(항상 free) 층에 인접 쌍 1개를 남긴 배치(항상 solvable)로 확보.
+    const safe = buildBoard(safeAll());
+    if (hasMove(safe)) return safe;
+    // 그래도 실패하는 극단(baseline 자체가 첫 수 없음): 기존과 동일하게 baseline → reshuffle 로 데드락 방지.
+    const baseline = buildBoard(plans.map((p) => p.baseline));
+    if (hasMove(baseline)) return baseline;
+    if (stats) stats.reshuffled++;
+    reshuffleWith(baseline, rnd);
+    if (hasMove(baseline)) return baseline;
   }
   throw new Error("보드 생성 실패");
 }
@@ -533,12 +668,16 @@ function generateUpBoard(
   kinds: GameCard[],
   cardsList: GameCard[],
   idxOf: (card: GameCard) => number,
-  rnd: () => number
+  rnd: () => number,
+  reduce: boolean,
+  stats?: GenerateStats
 ): Board {
-  // 한 줄 덱: cols/2 페어 → 줄 안에서 셔플(줄 내부 짝 성립 → 전체 짝수 유지).
+  // 한 줄 덱: cols/2 페어 → 줄 안에서 셔플(줄 내부 짝 성립 → 전체 짝수 유지) → 가로 인접 동일 완화.
   // kinds 인덱스를 줄마다 랜덤 회전(offset)해 모듈로로 고르므로, kinds.length(cardKinds 상향분)가
   // 줄당 페어 수(cols/2)보다 크기만 하면 한 줄 안에서는 카드 종류가 항상 겹치지 않는다
   // (기존의 rnd()*kinds.length 완전 랜덤 추출은 종류 수를 늘려도 한 줄 내 중복이 흔했음).
+  // UP 은 줄 상승 게임이라 가로(같은 줄) 인접 동일이 특히 도드라져, 줄 안에서 상하좌우 완화를 적용한다.
+  // 완화는 줄 내부에서만 자리를 바꿔 줄별 멀티셋(짝수)을 그대로 보존한다(층·줄 간 이동 없음).
   const makeRowDeck = (): GameCard[] => {
     const pairs = diff.cols / 2;
     const offset = Math.floor(rnd() * kinds.length);
@@ -547,7 +686,11 @@ function generateUpBoard(
       const card = kinds[(offset + p) % kinds.length];
       rowDeck.push(card, card);
     }
-    return seededShuffle(rowDeck, rnd);
+    const shuffled = seededShuffle(rowDeck, rnd);
+    if (!reduce) return shuffled;
+    // 한 줄만 넘기면 이웃이 좌우(가로)로만 잡혀 세로 인접은 대상에서 제외된다(요구: 최소 가로 인접 제거).
+    const rowCells: Point[] = shuffled.map((_, i) => ({ r: 1, c: i + 1 }));
+    return reduceAdjacency(rowCells, shuffled, rnd);
   };
 
   // 예비(상승) 줄 덱 — 배치보다 먼저 생성해 시드 소비 순서를 고정(재현성)
@@ -556,6 +699,7 @@ function generateUpBoard(
 
   const initialRows = Math.min(UP_INITIAL_ROWS, diff.rows);
   for (let attempt = 0; attempt < 60; attempt++) {
+    if (stats) stats.attempts = attempt + 1;
     const tiles: Tile[] = [];
     let tileId = 0;
     // 하단 initialRows 줄만 배치 (r = rows-initialRows+1 .. rows)
@@ -590,6 +734,7 @@ function generateUpBoard(
       nextTileId: tileId,
     };
     if (hasMove(board)) return board;
+    if (stats) stats.reshuffled++;
     reshuffleWith(board, rnd);
     if (hasMove(board)) return board;
   }
