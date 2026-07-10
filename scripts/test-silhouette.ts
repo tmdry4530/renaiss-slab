@@ -28,13 +28,14 @@ const sig = (board: Board): string =>
     r: board.reserve.map((row) => row.map((card) => card.cardId)),
   });
 
+// 2차 반복(눈 구멍 + 캔버스 확대): easy 10×13/72 · normal 12×16/98(구멍2) · hard 14×18/146(구멍2)
 const EXPECTED: Record<
   DifficultyKey,
   { rows: number; cols: number; layer0: number; layer0Max: number }
 > = {
-  easy: { rows: 8, cols: 10, layer0: 44, layer0Max: 52 },
-  normal: { rows: 10, cols: 13, layer0: 72, layer0Max: 80 },
-  hard: { rows: 12, cols: 16, layer0: 100, layer0Max: 112 },
+  easy: { rows: 10, cols: 13, layer0: 72, layer0Max: 80 },
+  normal: { rows: 12, cols: 16, layer0: 98, layer0Max: 110 },
+  hard: { rows: 14, cols: 18, layer0: 146, layer0Max: 150 },
 };
 const MODES: MapMode[] = ["normal", "victory", "shanghai"];
 const DIFFS: DifficultyKey[] = DIFFICULTIES.map((difficulty) => difficulty.key);
@@ -155,9 +156,9 @@ for (const mode of MODES) {
 console.log("  주: p=pikachu, r=rect. reshuf 비교는 정보성 계측이며 임계값 단언이 아니다.");
 
 console.log("\n[단언]");
-check("캔버스 치수 일치: easy 8×10 / normal 10×13 / hard 12×16", canvasFail === 0);
-check("layer 0 타일 수 일치: easy 44 / normal 72 / hard 100", layer0CountFail === 0);
-check("layer 0 난이도 상한 준수: easy ≤52 / normal ≤80 / hard ≤112", layer0LimitFail === 0);
+check("캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", canvasFail === 0);
+check("layer 0 타일 수 일치: easy 72 / normal 98 / hard 146", layer0CountFail === 0);
+check("layer 0 난이도 상한 준수: easy ≤80 / normal ≤110 / hard ≤150", layer0LimitFail === 0);
 check("총 타일 수 짝수 (상하이 상층 포함)", oddTotal === 0);
 check("데드락 0건 (모든 피카츄 보드 hasMove)", deadlocks === 0);
 check("결정성: 같은 시드 2회 완전 동일", detFail === 0);
