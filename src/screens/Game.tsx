@@ -319,12 +319,13 @@ export default function Game({ init, room, myId, resume }: Props) {
   // 3컬럼 셸: 좌 플레이어(150) + 우 사이드바(168) + 중앙 여백 → 보드 가용 폭 산출
   const availW = vp.w - 150 - 168 - 72;
   const availH = vp.h - 120;
-  // 대형 실루엣 캔버스(예: 피카츄 hard 12×16)는 하한 42px 로는 1280×800 세로 오버플로우
-  // → 120칸 초과 보드만 하한 36px 완화 (기존 보드 ≤8×10·UP 10×10 은 42 유지, 동작 불변).
-  const minCellW = init.rows * init.cols > 120 ? 36 : 42;
-  const cellW = Math.round(
-    Math.max(minCellW, Math.min(150, Math.min(availW / init.cols, availH / (init.rows * ASPECT))))
-  );
+  // 대형 실루엣 캔버스(피카츄 12×16·14×18)는 하한 42px 로는 1280×800 세로 오버플로우
+  // → 캔버스 크기에 따라 하한 완화(>200칸 32px, >120칸 36px — 기존 보드 ≤8×10·UP 10×10 은 42 유지).
+  // 대형 보드는 반올림 대신 내림: 0.5px 반올림이 행수만큼 증폭돼 가용 높이를 넘는 것을 방지.
+  const boardCells = init.rows * init.cols;
+  const minCellW = boardCells > 200 ? 32 : boardCells > 120 ? 36 : 42;
+  const fitW = Math.max(minCellW, Math.min(150, Math.min(availW / init.cols, availH / (init.rows * ASPECT))));
+  const cellW = boardCells > 120 ? Math.floor(fitW) : Math.round(fitW);
   const cellH = Math.round(cellW * ASPECT);
   const boardW = init.cols * cellW;
   const boardH = init.rows * cellH;
