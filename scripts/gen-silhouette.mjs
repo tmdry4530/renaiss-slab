@@ -5,7 +5,7 @@ import { basename, extname } from "node:path";
 import { inflateSync } from "node:zlib";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-const CANVASES = [
+const DEFAULT_CANVASES = [
   { name: "easy", rows: 8, cols: 10 },
   { name: "normal", rows: 10, cols: 13 },
   { name: "hard", rows: 12, cols: 16 },
@@ -25,18 +25,21 @@ function parseArguments(argv) {
   let imagePath;
   let name;
   let threshold = 0.4;
+  let canvases = DEFAULT_CANVASES;
+  let holes = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
 
-    if (argument === "--name" || argument === "--threshold") {
+    if (argument === "--name" || argument === "--threshold" || argument === "--canvas") {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) {
         fail(`${argument} 옵션에 값이 필요합니다.`);
       }
       index += 1;
       if (argument === "--name") name = value;
-      else threshold = Number(value);
+      else if (argument === "--threshold") threshold = Number(value);
+      else canvases = parseCanvases(value);
       continue;
     }
 
@@ -48,6 +51,14 @@ function parseArguments(argv) {
       threshold = Number(argument.slice("--threshold=".length));
       continue;
     }
+    if (argument.startsWith("--canvas=")) {
+      canvases = parseCanvases(argument.slice("--canvas=".length));
+      continue;
+    }
+    if (argument === "--holes") {
+      holes = true;
+      continue;
+    }
     if (argument.startsWith("--")) fail(`알 수 없는 옵션입니다: ${argument}`);
     if (imagePath) fail(`입력 이미지는 하나만 지정할 수 있습니다: ${argument}`);
     imagePath = argument;
@@ -55,7 +66,7 @@ function parseArguments(argv) {
 
   if (!imagePath) {
     fail(
-      "사용법: node scripts/gen-silhouette.mjs <image.png> [--name pikachu] [--threshold 0.4]",
+      "사용법: node scripts/gen-silhouette.mjs <image.png> [--name pikachu] [--threshold 0.4] [--canvas 14x18] [--holes]",
     );
   }
   if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
@@ -66,7 +77,28 @@ function parseArguments(argv) {
   if (name === undefined) name = fallbackName;
   if (!name.trim()) fail("--name은 비어 있을 수 없습니다.");
 
-  return { imagePath, name, threshold };
+  return { imagePath, name, threshold, canvases, holes };
+}
+
+function parseCanvases(value) {
+  if (!value) fail("--canvas는 rowsxcols 형식의 값을 하나 이상 지정해야 합니다.");
+
+  return value.split(",").map((entry) => {
+    const match = /^([1-9]\d*)x([1-9]\d*)$/.exec(entry);
+    if (!match) {
+      fail(
+        `잘못된 --canvas 값입니다: ${JSON.stringify(entry)} (예: 14x18 또는 10x13,12x16,14x18)`,
+      );
+    }
+
+    const rows = Number(match[1]);
+    const cols = Number(match[2]);
+    if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols)) {
+      fail(`--canvas의 행과 열은 안전한 양의 정수여야 합니다: ${JSON.stringify(entry)}`);
+    }
+
+    return { name: `${rows}×${cols}`, rows, cols, custom: true };
+  });
 }
 
 function paethPredictor(left, up, upperLeft) {
@@ -199,6 +231,7 @@ function decodePng(buffer) {
 
 function createForegroundMask(image) {
   const mask = new Uint8Array(image.width * image.height);
+  const darkMask = new Uint8Array(image.width * image.height);
   let minX = image.width;
   let minY = image.height;
   let maxX = -1;
@@ -215,6 +248,8 @@ function createForegroundMask(image) {
 
       if (!isBackground) {
         mask[y * image.width + x] = 1;
+        const luminance = 0.299 * red + 0.587 * green + 0.114 * blue;
+        if (luminance < 100) darkMask[y * image.width + x] = 1;
         minX = Math.min(minX, x);
         minY = Math.min(minY, y);
         maxX = Math.max(maxX, x);
@@ -224,7 +259,7 @@ function createForegroundMask(image) {
   }
 
   if (maxX < 0) fail("전경 픽셀이 0개입니다.");
-  return { mask, bounds: { minX, minY, maxX: maxX + 1, maxY: maxY + 1 } };
+  return { mask, darkMask, bounds: { minX, minY, maxX: maxX + 1, maxY: maxY + 1 } };
 }
 
 function foregroundArea(mask, imageWidth, x0, y0, x1, y1) {
@@ -249,7 +284,7 @@ function foregroundArea(mask, imageWidth, x0, y0, x1, y1) {
 }
 
 function sampleCanvas(foreground, imageWidth, canvas, threshold) {
-  const { mask, bounds } = foreground;
+  const { mask, darkMask, bounds } = foreground;
   const sourceWidth = bounds.maxX - bounds.minX;
   const sourceHeight = bounds.maxY - bounds.minY;
   const boardWidth = canvas.cols * 5;
@@ -260,6 +295,7 @@ function sampleCanvas(foreground, imageWidth, canvas, threshold) {
   const renderedX = (boardWidth - renderedWidth) / 2;
   const renderedY = (boardHeight - renderedHeight) / 2;
   const cells = Array.from({ length: canvas.rows }, () => Array(canvas.cols).fill(false));
+  const darkRatios = Array.from({ length: canvas.rows }, () => Array(canvas.cols).fill(0));
 
   for (let row = 0; row < canvas.rows; row += 1) {
     for (let column = 0; column < canvas.cols; column += 1) {
@@ -286,10 +322,21 @@ function sampleCanvas(foreground, imageWidth, canvas, threshold) {
       );
       const coverage = (coveredArea * scale * scale) / (5 * 7);
       cells[row][column] = coverage + Number.EPSILON >= threshold;
+      if (coveredArea > 0) {
+        const darkArea = foregroundArea(
+          darkMask,
+          imageWidth,
+          sourceX0,
+          sourceY0,
+          sourceX1,
+          sourceY1,
+        );
+        darkRatios[row][column] = darkArea / coveredArea;
+      }
     }
   }
 
-  return cells;
+  return { cells, darkRatios };
 }
 
 function findIslands(cells) {
@@ -410,11 +457,40 @@ function correctParity(cells) {
   cells[fallback.row][fallback.column] = false;
 }
 
-function cleanCanvas(cells) {
+function applyHoles(cells, darkRatios) {
+  const holes = [];
+  const candidates = [];
+
+  for (let row = 1; row < cells.length - 1; row += 1) {
+    for (let column = 1; column < cells[0].length - 1; column += 1) {
+      if (cells[row][column] && darkRatios[row][column] + Number.EPSILON >= 0.5) {
+        candidates.push([row, column]);
+      }
+    }
+  }
+
+  for (const [row, column] of candidates) {
+    if (!cells[row][column] || countFilledNeighbors(cells, row, column) !== 4) continue;
+
+    const islandCount = findIslands(cells).length;
+    cells[row][column] = false;
+    if (findIslands(cells).length > islandCount) {
+      cells[row][column] = true;
+      continue;
+    }
+    holes.push([row, column]);
+  }
+
+  return holes;
+}
+
+function cleanCanvas(sampled, includeHoles) {
+  const { cells, darkRatios } = sampled;
   removeSmallIslands(cells);
   erodeTails(cells);
+  const holes = includeHoles ? applyHoles(cells, darkRatios) : [];
   correctParity(cells);
-  return cells;
+  return { cells, holes };
 }
 
 function toAscii(cells) {
@@ -426,18 +502,26 @@ function formatIslandReport(islands) {
   return `섬 ${islands.length}개 — 크기 ${sizes.join(", ")}칸`;
 }
 
-function printResults(name, results) {
+function formatHoleReport(holes) {
+  const locations = holes.map(([row, column]) => `(행 ${row + 1}, 열 ${column + 1})`);
+  return `구멍 ${holes.length}개 — 위치 ${locations.length > 0 ? locations.join(", ") : "없음"}`;
+}
+
+function printResults(name, results, includeHoles) {
   for (const result of results) {
     console.log(`\n===== ${result.name} =====`);
-    console.log(`${result.name} ${result.rows}×${result.cols} — 채움 ${result.filled}칸(짝수)`);
+    const label = result.custom ? result.name : `${result.name} ${result.rows}×${result.cols}`;
+    console.log(`${label} — 채움 ${result.filled}칸(짝수)`);
     console.log(result.ascii.join("\n"));
     console.log(formatIslandReport(result.islands));
+    if (includeHoles) console.log(formatHoleReport(result.holes));
   }
 
   console.log("\n===== shared/board.ts SILHOUETTES 스니펫 =====");
   console.log(`${JSON.stringify(name)}: {`);
   for (const result of results) {
-    console.log(`  ${result.name}: [`);
+    const key = result.custom ? JSON.stringify(result.name) : result.name;
+    console.log(`  ${key}: [`);
     for (const row of result.ascii) console.log(`    ${JSON.stringify(row)},`);
     console.log("  ],");
   }
@@ -445,19 +529,24 @@ function printResults(name, results) {
 }
 
 function main() {
-  const { imagePath, name, threshold } = parseArguments(process.argv.slice(2));
+  const { imagePath, name, threshold, canvases, holes: includeHoles } = parseArguments(
+    process.argv.slice(2),
+  );
   const image = decodePng(readFileSync(imagePath));
   const foreground = createForegroundMask(image);
-  const results = CANVASES.map((canvas) => {
-    const cells = cleanCanvas(sampleCanvas(foreground, image.width, canvas, threshold));
+  const results = canvases.map((canvas) => {
+    const { cells, holes } = cleanCanvas(
+      sampleCanvas(foreground, image.width, canvas, threshold),
+      includeHoles,
+    );
     const islands = findIslands(cells);
     const filled = countFilled(cells);
     if (filled === 0) fail(`${canvas.name} 캔버스의 전경 칸이 0개입니다.`);
 
-    return { ...canvas, ascii: toAscii(cells), islands, filled };
+    return { ...canvas, ascii: toAscii(cells), islands, filled, holes };
   });
 
-  printResults(name, results);
+  printResults(name, results, includeHoles);
 }
 
 try {
