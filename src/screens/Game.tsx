@@ -319,8 +319,11 @@ export default function Game({ init, room, myId, resume }: Props) {
   // 3컬럼 셸: 좌 플레이어(150) + 우 사이드바(168) + 중앙 여백 → 보드 가용 폭 산출
   const availW = vp.w - 150 - 168 - 72;
   const availH = vp.h - 120;
+  // 대형 실루엣 캔버스(예: 피카츄 hard 12×16)는 하한 42px 로는 1280×800 세로 오버플로우
+  // → 120칸 초과 보드만 하한 36px 완화 (기존 보드 ≤8×10·UP 10×10 은 42 유지, 동작 불변).
+  const minCellW = init.rows * init.cols > 120 ? 36 : 42;
   const cellW = Math.round(
-    Math.max(42, Math.min(150, Math.min(availW / init.cols, availH / (init.rows * ASPECT))))
+    Math.max(minCellW, Math.min(150, Math.min(availW / init.cols, availH / (init.rows * ASPECT))))
   );
   const cellH = Math.round(cellW * ASPECT);
   const boardW = init.cols * cellW;
