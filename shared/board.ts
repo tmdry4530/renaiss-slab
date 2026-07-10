@@ -205,9 +205,9 @@ export function resolveDifficulty(d: DifficultyKey | Difficulty): Difficulty {
 
 // ── 마스크 (비사각형 맵 모양, PRD §6) ────────────────────────
 // 매 라운드 다양한 형태의 맵. true = 타일이 놓이는 유효 칸.
-// 실루엣 종류(pikachu/charizard/crystal/star/skull/apple/fish)는 손으로 그린 비트맵(SILHOUETTES)을
-// 각 맵 크기에 맞춰 샘플링한 테마 전용 마스크(shared/mapThemes.ts 로만 지정) — 시드 랜덤 선택 풀(MASK_KINDS)에는
-// 넣지 않는다(기존 5종 랜덤 분포·테스트 유지, 테마 미지정 보드는 이전과 동일하게 동작).
+// 실루엣 종류(pikachu/charizard/crystal/star/skull/apple/fish)는 단일·다중 해상도 비트맵을
+// 캐릭터별 캔버스에 맞춰 쓰는 테마 전용 마스크(shared/mapThemes.ts 로만 지정) — 시드 랜덤 선택 풀
+// (MASK_KINDS)에는 넣지 않는다(기존 5종 랜덤 분포·테스트 유지, 테마 미지정 보드는 이전과 동일하게 동작).
 export type MaskKind =
   | "rect"
   | "diamond"
@@ -223,22 +223,19 @@ export type MaskKind =
   | "fish";
 export const MASK_KINDS: MaskKind[] = ["rect", "diamond", "donut", "cross", "corners"];
 
-// 손으로 그린 실루엣 비트맵('#'=타일, 그 외=빈칸). 각 테마 맵의 실제 보드 크기(초급 4×6·고급 8×10)에
-// 정확히 맞춰 작성했다. 요청 크기가 다르면 sampleSilhouette 가 최근접(nearest-neighbor)으로 정합.
+export const MASK_CANVAS: Partial<Record<MaskKind, Record<DifficultyKey, { rows: number; cols: number }>>> = {
+  pikachu: {
+    easy: { rows: 8, cols: 10 },
+    normal: { rows: 10, cols: 13 },
+    hard: { rows: 12, cols: 16 },
+  },
+};
+
+// 손으로 그린 실루엣 비트맵('#'=타일, 그 외=빈칸). 단일 비트맵은 요청 크기가 다르면
+// sampleSilhouette 가 최근접(nearest-neighbor)으로 정합하고, 다중 변형은 정확한 캔버스 치수를 우선한다.
 // 모든 실루엣은 유효 칸 수를 짝수로 그렸고(makeMask 짝수 보정으로 한 번 더 방어), 흩어진 칸도 빈 칸을
 // 통한 경로 연결이 가능하도록 충분히 덩어리진 형태로 유지한다.
 const SILHOUETTES: Partial<Record<MaskKind, string[]>> = {
-  // 피카츄(상하이/8×10): 뾰족한 양 귀 + 둥근 몸통
-  pikachu: [
-    ".#......#.",
-    ".##....##.",
-    ".###..###.",
-    "..######..",
-    ".########.",
-    ".########.",
-    "..######..",
-    "...####...",
-  ],
   // 리자몽(승리/8×10): 위로 솟는 불꽃 + 양 날개 힌트 + 넓은 몸통
   charizard: [
     "....##....",
@@ -280,6 +277,47 @@ const SILHOUETTES: Partial<Record<MaskKind, string[]>> = {
   fish: [".####.", "####.#", "####.#", ".####."],
 };
 
+const SILHOUETTE_VARIANTS: Partial<Record<MaskKind, string[][]>> = {
+  pikachu: [
+    [
+      "..........",
+      ".##....##.",
+      "..########",
+      "..########",
+      "..#######.",
+      "..######..",
+      "..######..",
+      "..#####...",
+    ],
+    [
+      ".............",
+      ".##.....###..",
+      "..###########",
+      "...##########",
+      "...#########.",
+      "...########..",
+      "...#######...",
+      "..########...",
+      "..########...",
+      "..###..###...",
+    ],
+    [
+      "................",
+      ".###.......##...",
+      "..###.#######...",
+      "...###########..",
+      "....##########..",
+      "...##########...",
+      "...##########...",
+      "....#########...",
+      "...#########....",
+      "..##########....",
+      "..##########....",
+      "...###..###.....",
+    ],
+  ],
+};
+
 // 실루엣 비트맵을 요청 (rows×cols) 로 최근접 샘플링. 설계 크기와 같으면 1:1(항등).
 function sampleSilhouette(pattern: string[], rows: number, cols: number): boolean[][] {
   const P = pattern.length;
@@ -298,7 +336,10 @@ function sampleSilhouette(pattern: string[], rows: number, cols: number): boolea
 
 /** rows×cols 마스크 생성. 유효 칸 수가 항상 짝수가 되도록 보정한다. */
 export function makeMask(kind: MaskKind, rows: number, cols: number): boolean[][] {
-  const sil = SILHOUETTES[kind];
+  const variants = SILHOUETTE_VARIANTS[kind];
+  const sil = variants?.find(
+    (pattern) => pattern.length === rows && pattern.every((line) => line.length === cols)
+  ) ?? SILHOUETTES[kind] ?? variants?.[0];
   const m = sil
     ? sampleSilhouette(sil, rows, cols)
     : Array.from({ length: rows }, () => Array<boolean>(cols).fill(false));
@@ -421,7 +462,7 @@ export function generateBoard(
   const baseDiff = resolveDifficulty(difficulty);
   const mapMode: MapMode = opts.mapMode ?? "normal";
   // UP 모드는 가로 폭 10 강제 (rows·reserveRows 는 난이도 유지). 마스크·배치 전에 확정해야 함.
-  const diff: Difficulty = mapMode === "up" ? { ...baseDiff, cols: UP_BOARD_COLS } : baseDiff;
+  let diff: Difficulty = mapMode === "up" ? { ...baseDiff, cols: UP_BOARD_COLS } : baseDiff;
   const rnd = mulberry32(seed >>> 0);
   const usable = pool.filter((c) => c.imageUrl);
   if (usable.length === 0) throw new Error("카드 풀이 비어 있습니다");
@@ -429,6 +470,8 @@ export function generateBoard(
   // UP 은 항상 rect 강제(테마 마스크가 지정돼도 무시) — 넓은 직사각 보드로 교착 상승 체감 유지
   const maskKind: MaskKind =
     mapMode === "up" ? "rect" : (opts.mask ?? MASK_KINDS[Math.floor(rnd() * MASK_KINDS.length)]);
+  const cv = MASK_CANVAS[maskKind]?.[diff.key];
+  if (cv) diff = { ...diff, rows: cv.rows, cols: cv.cols };
   const mask = makeMask(maskKind, diff.rows, diff.cols);
 
   // 층별 셀 목록 (layer 0 = 마스크 전체, 상하이 layer 1 = 중앙 축소 영역)
