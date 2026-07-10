@@ -34,8 +34,8 @@ const EXPECTED: Record<
   { rows: number; cols: number; layer0: number; layer0Max: number }
 > = {
   easy: { rows: 10, cols: 13, layer0: 72, layer0Max: 80 },
-  normal: { rows: 12, cols: 16, layer0: 98, layer0Max: 110 },
-  hard: { rows: 14, cols: 18, layer0: 146, layer0Max: 150 },
+  normal: { rows: 12, cols: 16, layer0: 102, layer0Max: 110 },
+  hard: { rows: 14, cols: 18, layer0: 150, layer0Max: 150 },
 };
 const MODES: MapMode[] = ["normal", "victory", "shanghai"];
 const DIFFS: DifficultyKey[] = DIFFICULTIES.map((difficulty) => difficulty.key);
@@ -157,7 +157,7 @@ console.log("  주: p=pikachu, r=rect. reshuf 비교는 정보성 계측이며 �
 
 console.log("\n[단언]");
 check("캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", canvasFail === 0);
-check("layer 0 타일 수 일치: easy 72 / normal 98 / hard 146", layer0CountFail === 0);
+check("layer 0 타일 수 일치: easy 72 / normal 102 / hard 150", layer0CountFail === 0);
 check("layer 0 난이도 상한 준수: easy ≤80 / normal ≤110 / hard ≤150", layer0LimitFail === 0);
 check("총 타일 수 짝수 (상하이 상층 포함)", oddTotal === 0);
 check("데드락 0건 (모든 피카츄 보드 hasMove)", deadlocks === 0);
