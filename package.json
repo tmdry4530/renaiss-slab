@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build",
     "start": "tsx server/index.ts --static",
     "preview": "vite preview",
-    "test": "tsx scripts/test-shisen.ts && tsx scripts/test-board.ts && tsx scripts/test-modes.ts && tsx scripts/test-adjacency.ts && tsx scripts/test-sim.ts && tsx scripts/test-server.ts",
+    "test": "tsx scripts/test-shisen.ts && tsx scripts/test-board.ts && tsx scripts/test-modes.ts && tsx scripts/test-adjacency.ts && tsx scripts/test-silhouette.ts && tsx scripts/test-sim.ts && tsx scripts/test-server.ts",
     "prefetch": "npm run prefetch:pool && npm run prefetch:cli",
     "prefetch:pool": "node scripts/prefetch-pool.mjs",
     "prefetch:cli": "node scripts/prefetch-cli.mjs"
