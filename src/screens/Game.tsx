@@ -555,7 +555,7 @@ export default function Game({ init, room, myId, resume }: Props) {
         return;
       }
       const pair: [number, number] = [t.tileId, other.tileId];
-      audio.playSound("item"); // 가위 사용 — 스와이프/휘릭
+      audio.playSound("scissor"); // 가위 사용 — 스와이프/휘릭
       setItems((it) => ({ ...it, scissor: it.scissor - 1 })); // 낙관적 즉시 차감
       getSocket().emit("item:use", { type: "scissor", tiles: pair }, (r) => {
         if (r.data?.items) setItems(r.data.items); // 서버 권위 잔량으로 동기화
@@ -610,7 +610,7 @@ export default function Game({ init, room, myId, resume }: Props) {
   // ── 아이템 ──────────────────────────────────────────────────
   function useSimpleItem(type: "search" | "shuffle") {
     if (items[type] <= 0) return;
-    audio.playSound("item"); // 아이템 사용 — 스와이프/휘릭
+    audio.playSound(type === "search" ? "search" : "shuffle"); // 아이템 사용 — 스와이프/휘릭
     setItems((it) => ({ ...it, [type]: it[type] - 1 })); // 낙관적 즉시 차감 (개수 0이면 버튼 즉시 비활성)
     getSocket().emit("item:use", { type }, (r) => {
       // 서버 권위 잔량으로 최종 동기화(이중 차감 방지). items 미반환(가드 실패 등) + 실패면 낙관적 차감 복구.

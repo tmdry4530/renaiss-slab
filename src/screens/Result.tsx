@@ -10,7 +10,11 @@ import type {
 import { getSocket } from "../net.ts";
 import { errText, fmtMs, gameLabel } from "../labels.ts";
 import { hasRealPrice } from "../ui.tsx";
+import { audio } from "../audio.ts";
 import { avatarFor } from "./Game.tsx";
+
+/** 종료음(gameover, App.tsx)과 겹치지 않도록 결과음(win/lose)을 지연 재생하는 간격(ms) */
+const RESULT_SOUND_DELAY_MS = 800;
 
 interface Props {
   ranks: RankEntry[];
@@ -65,6 +69,18 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
     } catch {
       /* localStorage 사용 불가 — 무시 */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 결과음(win/lose) — 결과 화면 진입 시 1회, gameover 종료음과 겹치지 않게 지연 재생.
+  // 대전(2명 이상)은 내 순위 1위 여부로, 혼자 하기는 클리어 성공 여부로 승패 판정.
+  const resultSoundPlayedRef = useRef(false);
+  useEffect(() => {
+    if (resultSoundPlayedRef.current || !myRank) return;
+    resultSoundPlayedRef.current = true;
+    const won = ranks.length > 1 ? myRank.rank === 1 : myRank.cleared;
+    const timer = window.setTimeout(() => audio.playSound(won ? "win" : "lose"), RESULT_SOUND_DELAY_MS);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -242,6 +242,7 @@ export default function App() {
       }
     };
     const onEnded = (p: { ranks: RankEntry[]; summaries: PlayerSummary[] }) => {
+      audio.playSound("gameover");
       setResult(p);
       setScreen("result");
     };
