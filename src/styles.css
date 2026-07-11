@@ -427,18 +427,24 @@ h2 { font-size: 16px; margin: 0; }
 .gtile.shake { animation: shake 0.4s ease; }
 .gtile.targeting:not(:disabled) { cursor: crosshair; }
 
-/* 상하이: layer 1 은 살짝 offset + 그림자, 덮인 아래층은 어둡게 + 클릭 무시 */
+/* 상하이 층 구분 (플레이 피드백: 1·2층 식별 어려움 → 마작식 입체감으로 강화)
+   layer 1 = 위층: 오프셋 확대 + 솔리드 측면(타일 두께) 2겹 + 밝은 엣지 + 드롭 섀도.
+   아래층은 덮인 타일만 어둡게(기존) — 노출 타일은 측면 없는 평면으로 대비된다. */
 .gtile.layer1 {
-  transform: translate(-6px, -9px); z-index: 3;
-  box-shadow: 6px 9px 14px rgba(0, 0, 0, 0.6);
-  border-color: #39435a;
+  transform: translate(-7px, -10px); z-index: 3;
+  border-color: #93a3c8;
+  /* 측면 높이 = 오프셋(7,10) — 측면이 아래층 표면까지 정확히 닿아 "쌓임"으로 읽힘(부양감 방지) */
+  box-shadow:
+    3px 4px 0 -1px #060810,
+    7px 10px 0 -1px #26304a,
+    8px 11px 6px rgba(0, 0, 0, 0.4);
 }
-.gtile.layer1:hover:not(:disabled) { transform: translate(-6px, -12px) scale(1.04); }
-.gtile.layer1.sel { transform: translate(-6px, -9px); }
+.gtile.layer1:hover:not(:disabled) { transform: translate(-7px, -13px) scale(1.04); }
+.gtile.layer1.sel { transform: translate(-7px, -10px); }
 .gtile.covered { cursor: not-allowed; }
 .gtile.covered img { filter: brightness(0.42) saturate(0.6); }
 .gtile.covered:hover { transform: none; box-shadow: none; border-color: var(--bg); }
-.vanish.layer1 { transform: translate(-6px, -9px); }
+.vanish.layer1 { transform: translate(-7px, -10px); }
 
 /* 승리 카드: 금색 그라데이션 배경 + 큰 "승" + glow + 👑 뱃지 */
 .gtile.victory {
