@@ -332,6 +332,9 @@ export default function Game({ init, room, myId, resume }: Props) {
   const fitW = Math.max(minCellW, Math.min(150, Math.min(availW / init.cols, availH / (init.rows * ASPECT))));
   const cellW = boardCells > 120 ? Math.floor(fitW) : Math.round(fitW);
   const cellH = Math.round(cellW * ASPECT);
+  // 승리 카드 표면 글자 — 언어별로 다름(ko "승" 1글자 / en "WIN" 3글자) → 길이에 맞춰 폰트 축소
+  const victoryFace = t("game.victoryFace");
+  const victoryFaceFont = Math.round(cellH * (victoryFace.length > 1 ? 0.26 : 0.5));
   const boardW = init.cols * cellW;
   const boardH = init.rows * cellH;
   const center = (r: number, c: number) => ({ x: (c - 1 + 0.5) * cellW, y: (r - 1 + 0.5) * cellH });
@@ -816,8 +819,8 @@ export default function Game({ init, room, myId, resume }: Props) {
               coveredKeys={coveredKeys}
               cellW={cellW}
               cellH={cellH}
-              faceFont={Math.round(cellH * 0.5)}
-              victoryFace={t("game.victoryFace")}
+              faceFont={victoryFaceFont}
+              victoryFace={victoryFace}
               victoryTitle={t("game.victoryCard")}
               onTileClick={handleTileClick}
             />
@@ -832,7 +835,7 @@ export default function Game({ init, room, myId, resume }: Props) {
                 {v.card.imageUrlThumb || v.card.imageUrl ? (
                   <img src={v.card.imageUrlThumb || v.card.imageUrl} alt="" decoding="async" />
                 ) : (
-                  <span className="victory-face" style={{ fontSize: Math.round(cellH * 0.5) }}>{t("game.victoryFace")}</span>
+                  <span className="victory-face" style={{ fontSize: victoryFaceFont }}>{victoryFace}</span>
                 )}
               </div>
             ))}
@@ -998,7 +1001,7 @@ export default function Game({ init, room, myId, resume }: Props) {
           {toast.imageUrlThumb || toast.imageUrl ? (
             <img src={toast.imageUrlThumb || toast.imageUrl} alt="" decoding="async" />
           ) : (
-            <span className="victory-face docent-face">{t("game.victoryFace")}</span>
+            <span className="victory-face docent-face" style={victoryFace.length > 1 ? { fontSize: 14 } : undefined}>{victoryFace}</span>
           )}
           <div>
             <div className="d-name">{toast.name}</div>

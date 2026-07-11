@@ -393,7 +393,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "label.state.ended": "Finished",
     "label.state.playing": "In Progress",
 
-    "game.victoryFace": "V",
+    "game.victoryFace": "WIN",
     "game.victoryCard": "Victory Card",
     "game.dexRegistered": "📖 Card Dex entry unlocked! {names}",
     "game.rowRaised": "⬆ A new row has risen!",
