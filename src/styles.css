@@ -527,9 +527,10 @@ h2 { font-size: 16px; margin: 0; }
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
     radial-gradient(120% 120% at 50% 15%, #ff9a6a 0%, #e6432b 55%, #6e160f 100%);
 }
-.map-theme-nami {
+.map-theme-zeus {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
-    linear-gradient(160deg, #8ff0f0 0%, #2596be 55%, #0d3c56 100%);
+    radial-gradient(100% 80% at 72% 18%, rgba(255, 220, 62, .82) 0%, rgba(255, 220, 62, 0) 18%),
+    linear-gradient(160deg, #66778b 0%, #303d50 52%, #111925 100%);
 }
 .map-theme-mewtwo {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
@@ -539,9 +540,9 @@ h2 { font-size: 16px; margin: 0; }
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
     radial-gradient(120% 120% at 50% 15%, #ffd3e6 0%, #ec84ab 55%, #8a3a5c 100%);
 }
-.map-theme-going-merry {
+.map-theme-navy-road {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
-    linear-gradient(160deg, #7fe6c4 0%, #1f9e78 45%, #0a3d2e 100%);
+    linear-gradient(160deg, #f4f7fb 0%, #b9c7d8 24%, #244b73 25%, #0b2745 68%, #061629 100%);
 }
 
 /* 맵 아이콘 스프라이트(PokeAPI 픽셀아트) — 축소·확대 시 계단현상 유지해 도트 느낌을 살린다.

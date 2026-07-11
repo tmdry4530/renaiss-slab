@@ -118,7 +118,7 @@ interface SilhouetteCase {
 const SILHOUETTE_CASES: SilhouetteCase[] = [
   { mask: "charizard", mode: "victory", layer0: { easy: 76, normal: 110, hard: 142 } },
   { mask: "strawhat", mode: "victory", layer0: { easy: 56, normal: 88, hard: 108 } },
-  { mask: "tangerine", mode: "shanghai", layer0: { easy: 70, normal: 110, hard: 136 } },
+  { mask: "zeus", mode: "shanghai", layer0: { easy: 62, normal: 80, hard: 106 } },
   { mask: "sudowoodo", mode: "normal", layer0: { easy: 48, normal: 76, hard: 90 } },
   { mask: "skull", mode: "normal", layer0: { easy: 44, normal: 76, hard: 88 } },
   { mask: "apple", mode: "normal", layer0: { easy: 82, normal: 122, hard: 150 } },

@@ -47,11 +47,11 @@ export const MAP_PRESETS: MapPreset[] = [
   preset({ id: "bulbasaur",    emoji: "🌿", iconUrl: POKE_SPRITE + "1.png",   mapMode: "rolling",  difficulty: "easy", game: "pokemon", theme: "bulbasaur" }),
   preset({ id: "squirtle",     emoji: "💧", iconUrl: POKE_SPRITE + "7.png",   mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "squirtle" }),
   preset({ id: "luffy",        emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "luffy" }),
-  preset({ id: "nami",         emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "nami" }),
+  preset({ id: "zeus",         emoji: "⛈️", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "zeus" }),
   preset({ id: "sudowoodo",    emoji: "🌳", iconUrl: POKE_SPRITE + "185.png", mapMode: "normal", difficulty: "easy", game: "pokemon", theme: "sudowoodo" }),
   preset({ id: "mewtwo",       emoji: "💜", iconUrl: POKE_SPRITE + "150.png", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" }),
   preset({ id: "chopper",      emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" }),
-  preset({ id: "going-merry",  emoji: "⛵", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "going-merry" }),
+  preset({ id: "navy-road",    emoji: "⚓", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "navy-road" }),
 ];
 
 // 맵 아이콘: iconUrl(포켓몬 스프라이트)이 있으면 픽셀아트 이미지로, 로드 실패(onError)나 미지정이면 이모지로.

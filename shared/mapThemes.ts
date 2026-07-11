@@ -23,10 +23,10 @@ export const MAP_THEMES: Record<string, MapThemeDef> = {
   bulbasaur: { mask: "rect" }, // 이상해씨(롤링) — 꽉 찬 사각, 회전 친화, 배경은 초록 잎사귀 톤
   squirtle: { mask: "rect" }, // 꼬북이(UP) — rect 강제, 배경은 파랑 물결 톤
   luffy: { mask: "strawhat" }, // 루피(승리) — 밀짚모자 실루엣
-  nami: { mask: "tangerine" }, // 나미(상하이) — 귤 실루엣
+  zeus: { mask: "zeus" }, // 제우스(상하이) — 나미의 뇌운 호미
   mewtwo: { mask: "crystal" }, // 뮤츠(일반) — 사이킥 크리스탈(다이아몬드) 실루엣
   chopper: { mask: "donut" }, // 초파(롤링) — 둥근 순록뿔 링, 회전 친화
-  "going-merry": { mask: "rect" }, // 고잉메리호(UP) — rect 강제, 배경은 청록 바다/돛 톤
+  "navy-road": { mask: "rect" }, // 해군로(UP) — rect 강제, 해군 네이비 톤
 };
 
 /** theme 키로 강제 마스크를 조회 (미지정/알 수 없는 키는 undefined → 호출측이 기존 랜덤/기본 로직 사용) */

@@ -297,10 +297,10 @@ console.log("[테마 맵 실루엣]");
     { theme: "bulbasaur",    mode: "rolling",  diff: "easy", sil: false }, // 롤링 — rect
     { theme: "squirtle",     mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
     { theme: "luffy",        mode: "victory",  diff: "hard", sil: true },  // 승리 — star 실루엣
-    { theme: "nami",         mode: "shanghai", diff: "easy", sil: true },  // 상하이 — fish 실루엣
+    { theme: "zeus",         mode: "shanghai", diff: "easy", sil: true },  // 상하이 — zeus(뇌운) 실루엣
     { theme: "mewtwo",       mode: "normal",   diff: "hard", sil: true },  // 일반 — crystal 실루엣
     { theme: "chopper",      mode: "rolling",  diff: "easy", sil: false }, // 롤링 — donut(링)
-    { theme: "going-merry",  mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
+    { theme: "navy-road",    mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
   ];
   const RUNS = 100;
   for (const tm of THEME_MAPS) {
