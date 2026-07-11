@@ -70,6 +70,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("login");
   const [nickname, setNickname] = useState(loadNickname());
   const [playerId, setPlayerId] = useState(loadPlayerId() ?? "");
+  // 소켓 이펙트(deps [])의 이벤트 핸들러에서 최신 playerId 참조용 미러 (클로저 stale 방지)
+  const playerIdRef = useRef(playerId);
+  playerIdRef.current = playerId;
   const [pool, setPool] = useState<CardPool | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [room, setRoom] = useState<RoomDetail | null>(null);
@@ -222,7 +225,8 @@ export default function App() {
         countdownActiveRef.current = true;
         setShowGo(false);
         setCountdownSec(p.seconds);
-        audio.playSound("countdown");
+        // ready 사운드는 첫 틱(3)에서 1회만 — 긴 지글이 틱마다 겹치던 문제 해소 (회의 피드백)
+        if (p.seconds === COUNTDOWN_STEPS) audio.playSound("countdown");
         overlayFallbackTimer.current = window.setTimeout(() => {
           countdownActiveRef.current = false;
           setShowGo(false);
@@ -242,7 +246,10 @@ export default function App() {
       }
     };
     const onEnded = (p: { ranks: RankEntry[]; summaries: PlayerSummary[] }) => {
-      audio.playSound("gameover");
+      // 종료음 단일화: 즉시 1개만 — 대전은 1등 여부, 혼자는 클리어 여부 (gameover+win 겹침·800ms 지연 제거)
+      const mine = p.ranks.find((r) => r.playerId === playerIdRef.current);
+      const won = p.ranks.length > 1 ? mine?.rank === 1 : !!mine?.cleared;
+      audio.playSound(won ? "win" : "lose");
       setResult(p);
       setScreen("result");
     };
