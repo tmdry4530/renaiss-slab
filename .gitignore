@@ -7,3 +7,7 @@ dist/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+# 로컬 도구 상태·내부 스펙 문서 — 커밋 금지 (히스토리 정리 2026-07-11)
+.omc/
+.claude/
+.gstack/
