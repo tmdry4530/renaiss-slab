@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "../server/index.ts";
 import { findHint, type Board, type Tile } from "../shared/board.ts";
 import type { GameCard } from "../shared/cards.ts";
-import type { Ack, BoardInit, BoardPatch, RoomConfig } from "../shared/protocol.ts";
+import { DEX_REGISTER_COUNT, type Ack, type BoardInit, type BoardPatch, type RoomConfig } from "../shared/protocol.ts";
 
 let pass = 0,
   fail = 0;
@@ -538,6 +538,10 @@ async function main(): Promise<void> {
   check(
     "dex:get entries/progress/sbts",
     dg.ok && Array.isArray(dg.data.entries) && dg.data.entries.length > 0 && dg.data.progress.pokemon.total > 0 && Array.isArray(dg.data.sbts)
+  );
+  check(
+    `도감: ${DEX_REGISTER_COUNT}회 매칭한 엔트리 즉시 등록`,
+    dg.data.entries.every((entry: any) => entry.count >= DEX_REGISTER_COUNT && entry.registered)
   );
   const sb = await emitAck(c1.sock, "sbt:claim", { category: "pokemon" });
   check("도감 미완성 시 sbt:claim 거부", !sb.ok);

@@ -3,7 +3,7 @@
 // - playerId 별 인메모리 Map<cardId, count>
 // - .data/dex.json 파일에 주기 저장 / 서버 시작 시 로드 (데모용 영속화 —
 //   해커톤 범위 단순화. 실서비스는 Redis/DB 로 대체하는 것을 전제로 한다)
-// - 동일 카드 누적 DEX_REGISTER_COUNT(10)회 제거 시 도감 등록
+// - 카드 풀 확대로 같은 카드 10회 누적이 어려워, 첫 제거 시 즉시 도감 등록
 // - 카테고리 도감 완성 시 SBT 목(mock) 발급 (중복 발급 방지)
 // ─────────────────────────────────────────────────────────────
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

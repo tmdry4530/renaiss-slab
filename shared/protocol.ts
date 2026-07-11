@@ -87,7 +87,8 @@ export const COMBO_WINDOW_MS = 3000; // 콤보 지속시간 3초 (플레이 피�
 export const FINISH_GRACE_MS = 10000; // 1위 확정 후 10초 유예
 export const MATCH_TIME_LIMIT_MS = 300_000; // 전 모드·난이도 공통 매치 제한시간 5분 (3분→5분, 플레이 피드백)
 export const DISCONNECT_GRACE_MS = 60000; // 소켓 끊김(새로고침·순단) 후 재접속 유예 60초
-export const DEX_REGISTER_COUNT = 10; // 동일 카드 누적 10회 제거 시 도감 등록
+// 카드 풀이 커져 판마다 유니크한 짝이 대부분이므로 10회 누적 도달이 어려워, 첫 매칭에 즉시 등록한다.
+export const DEX_REGISTER_COUNT = 1;
 export const ITEM_QUOTA: Record<ItemType, number> = { search: 3, shuffle: 3, scissor: 1 };
 export const COUNTDOWN_STEPS = 3; // 3→2→1 카운트다운 스텝 수
 export const COUNTDOWN_STEP_MS = 1000; // 스텝 간 간격(ms). game:start ~ board:init 사이 = STEPS * STEP_MS

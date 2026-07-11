@@ -15,8 +15,19 @@ import { hasRealPrice } from "../ui.tsx";
 import { t, useLang } from "../i18n.ts";
 
 type Tab = "pokemon" | "one-piece";
+type StatusFilter = "all" | "registered" | "undiscovered";
+type SortMode = "set-number" | "price-desc" | "name";
 
 const DEX_PAGE_SIZE = 60;
+
+function compareSetNumber(a: GameCard, b: GameCard, collator: Intl.Collator): number {
+  return (
+    collator.compare(a.setName, b.setName) ||
+    collator.compare(a.cardNumber, b.cardNumber) ||
+    collator.compare(a.name, b.name) ||
+    collator.compare(a.cardId, b.cardId)
+  );
+}
 
 // 페이지 번호 압축 표기: 처음/끝 + 현재 페이지 ±1 + 생략(…)
 function pageList(current: number, total: number): (number | "…")[] {
@@ -48,6 +59,9 @@ export default function Dex({ pool, onBack, flash }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [page, setPage] = useState(1);
+  const [setFilter, setSetFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("set-number");
   const gridRef = useRef<HTMLDivElement>(null);
 
   // 도감 데이터 로드
@@ -67,13 +81,53 @@ export default function Dex({ pool, onBack, flash }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const cards = useMemo(
+  const collator = useMemo(
+    () => new Intl.Collator(lang === "ko" ? "ko-KR" : "en-US", { numeric: true, sensitivity: "base" }),
+    [lang]
+  );
+  const tabCards = useMemo(
     () => (pool ? pool.cards.filter((c) => c.game === tab) : []),
     [pool, tab]
   );
+  const setOptions = useMemo(() => {
+    const stats = new Map<string, { name: string; registered: number; total: number }>();
+    for (const card of tabCards) {
+      const current = stats.get(card.setName) ?? { name: card.setName, registered: 0, total: 0 };
+      current.total++;
+      if (entries[card.cardId]?.registered) current.registered++;
+      stats.set(card.setName, current);
+    }
+    return [...stats.values()].sort((a, b) => collator.compare(a.name, b.name));
+  }, [collator, entries, tabCards]);
+  const cards = useMemo(() => {
+    const filtered = tabCards.filter((card) => {
+      if (setFilter && card.setName !== setFilter) return false;
+      const registered = entries[card.cardId]?.registered === true;
+      if (statusFilter === "registered") return registered;
+      if (statusFilter === "undiscovered") return !registered;
+      return true;
+    });
+
+    filtered.sort((a, b) => {
+      if (sortMode === "price-desc") {
+        const aHasPrice = hasRealPrice(a);
+        const bHasPrice = hasRealPrice(b);
+        if (aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
+        if (aHasPrice && bHasPrice) {
+          const priceDiff = b.priceUsdCents - a.priceUsdCents;
+          if (priceDiff !== 0) return priceDiff;
+        }
+      } else if (sortMode === "name") {
+        const nameDiff = collator.compare(a.name, b.name);
+        if (nameDiff !== 0) return nameDiff;
+      }
+      return compareSetNumber(a, b, collator);
+    });
+    return filtered;
+  }, [collator, entries, setFilter, sortMode, statusFilter, tabCards]);
   const selectedCard: GameCard | null = useMemo(
-    () => (selected ? cards.find((c) => c.cardId === selected) ?? null : null),
-    [cards, selected]
+    () => (selected ? tabCards.find((c) => c.cardId === selected) ?? null : null),
+    [selected, tabCards]
   );
 
   const totalPages = Math.max(1, Math.ceil(cards.length / DEX_PAGE_SIZE));
@@ -131,6 +185,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
               className={`dex-tab ${tab === t ? "on" : ""}`}
               onClick={() => {
                 setTab(t);
+                setSetFilter("");
                 setSelected(null);
                 setPage(1);
               }}
@@ -149,6 +204,70 @@ export default function Dex({ pool, onBack, flash }: Props) {
         })}
       </div>
 
+      {pool && loaded && (
+        <div className="dex-controls">
+          <label className="dex-control dex-set-control">
+            <span className="dex-control-label">{t("dex.setFilter")}</span>
+            <select
+              value={setFilter}
+              onChange={(event) => {
+                setSetFilter(event.target.value);
+                setSelected(null);
+                setPage(1);
+              }}
+            >
+              <option value="">{t("dex.allSets")}</option>
+              {setOptions.map((set) => (
+                <option key={set.name} value={set.name}>
+                  {set.name} ({set.registered}/{set.total})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="dex-control">
+            <span className="dex-control-label">{t("dex.statusFilter")}</span>
+            <div className="dex-status-options" role="group" aria-label={t("dex.statusFilter")}>
+              {([
+                ["all", "dex.statusAll"],
+                ["registered", "dex.statusRegistered"],
+                ["undiscovered", "dex.statusUndiscovered"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={statusFilter === value ? "on" : ""}
+                  aria-pressed={statusFilter === value}
+                  onClick={() => {
+                    setStatusFilter(value);
+                    setSelected(null);
+                    setPage(1);
+                  }}
+                >
+                  {t(label)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="dex-control">
+            <span className="dex-control-label">{t("dex.sort")}</span>
+            <select
+              value={sortMode}
+              onChange={(event) => {
+                setSortMode(event.target.value as SortMode);
+                setSelected(null);
+                setPage(1);
+              }}
+            >
+              <option value="set-number">{t("dex.sortSetNumber")}</option>
+              <option value="price-desc">{t("dex.sortPriceHigh")}</option>
+              <option value="name">{t("dex.sortName")}</option>
+            </select>
+          </label>
+        </div>
+      )}
+
       {/* SBT 뱃지 + 완성 보상 */}
       <div className="dex-sbt-row">
         {sbts.map((s) => (
@@ -165,7 +284,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
       </div>
 
       <p className="muted small">
-        {t("dex.hint", { count: DEX_REGISTER_COUNT })}
+        {t("dex.hint")}
       </p>
 
       {!pool && <p className="muted">{t("dex.poolLoading")}</p>}
@@ -204,7 +323,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
         </div>
       )}
 
-      {/* 카드 그리드: 등록(컬러 + 테두리/체크) / 진행 중(컬러 + n/10 뱃지) / 미발견(실루엣 ?) */}
+      {/* 카드 그리드: 등록(컬러 + 테두리/체크) / 진행 중(컬러 + n/기준 뱃지) / 미발견(실루엣 ?) */}
       {pool && loaded && (
         <div className="dex-grid" ref={gridRef}>
           {pageCards.map((c) => {

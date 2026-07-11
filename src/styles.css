@@ -710,6 +710,30 @@ h2 { font-size: 16px; margin: 0; }
 .dex-tab-progress { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .dex-tab-progress .gb-track { height: 7px; }
 .dex-tab-progress .muted { font-size: 11.5px; text-align: left; }
+.dex-controls {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.dex-control { display: flex; flex-direction: column; gap: 6px; min-width: 170px; }
+.dex-set-control { flex: 1; min-width: 240px; }
+.dex-control-label { color: var(--muted); font-size: 11.5px; font-weight: 700; }
+.dex-control select {
+  width: 100%; min-height: 38px; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px;
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.dex-control select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dex-status-options { display: flex; }
+.dex-status-options button {
+  min-height: 38px; background: var(--panel2); color: var(--muted); border: 1px solid var(--line);
+  padding: 7px 12px; cursor: pointer; font: inherit; font-size: 12.5px;
+}
+.dex-status-options button + button { margin-left: -1px; }
+.dex-status-options button:first-child { border-radius: 9px 0 0 9px; }
+.dex-status-options button:last-child { border-radius: 0 9px 9px 0; }
+.dex-status-options button:hover { color: var(--text); border-color: var(--accent); position: relative; }
+.dex-status-options button.on { background: var(--accent); color: #07101f; border-color: var(--accent); font-weight: 800; position: relative; }
 .dex-sbt-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 
 .dex-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); margin-top: 14px; }
@@ -774,6 +798,8 @@ h2 { font-size: 16px; margin: 0; }
   background: var(--panel2); border: 1px solid var(--line);
 }
 @media (max-width: 720px) {
+  .dex-control, .dex-set-control { flex: 1 1 100%; min-width: 0; }
+  .dex-status-options button { flex: 1; }
   .dex-detail { flex-direction: column-reverse; }
   .dd-image { width: 150px; margin: 0 auto; }
 }
