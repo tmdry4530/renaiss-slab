@@ -120,6 +120,8 @@ const SILHOUETTE_CASES: SilhouetteCase[] = [
   { mask: "strawhat", mode: "rolling", layer0: { easy: 56, normal: 88, hard: 108 } },
   { mask: "whitebeard", mode: "victory", layer0: { easy: 66, normal: 86, hard: 106 } },
   { mask: "laboon", mode: "rolling", layer0: { easy: 58, normal: 82, hard: 108 } },
+  // 잉어킹은 프리셋 초급 전용 — easy 만 exact, normal/hard 는 업스케일 폴백 측정값 핀
+  { mask: "magikarp", mode: "rolling", layer0: { easy: 46, normal: 68, hard: 84 } },
   { mask: "zeus", mode: "shanghai", layer0: { easy: 62, normal: 80, hard: 106 } },
   { mask: "sudowoodo", mode: "normal", layer0: { easy: 46, normal: 82, hard: 90 } },
   { mask: "skull", mode: "normal", layer0: { easy: 62, normal: 70, hard: 88 } },

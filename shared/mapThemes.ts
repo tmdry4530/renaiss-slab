@@ -20,7 +20,7 @@ export const MAP_THEMES: Record<string, MapThemeDef> = {
   charizard: { mask: "charizard" }, // 리자몽(승리) — 불꽃+날개 실루엣
   sudowoodo: { mask: "sudowoodo" }, // 꼬지모(일반) — 가지와 나무 몸통 실루엣
   "jolly-roger": { mask: "skull" }, // 해적깃발(일반) — 해골 실루엣
-  magikarp: { mask: "rect" }, // 잉어킹(롤링) — 꽉 찬 사각, 회전 친화, 배경은 주홍·금빛 물결 톤
+  magikarp: { mask: "magikarp" }, // 잉어킹(롤링) — 물고기 실루엣(눈구멍·꼬리 V), 주홍·금빛 물결 톤
   ditto: { mask: "rect" }, // 메타몽(UP) — rect 강제, 배경은 연보라 젤리 톤
   whitebeard: { mask: "whitebeard" }, // 흰수염해적단(승리) — 십자+해골+수염 실루엣
   zeus: { mask: "zeus" }, // 제우스(상하이) — 나미의 뇌운 호미
