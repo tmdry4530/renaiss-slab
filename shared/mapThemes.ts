@@ -10,10 +10,10 @@ export interface MapThemeDef {
   mask: MaskKind;
 }
 
-// 모드별 제약: UP 테마는 rect 강제(생성기가 무시하고 rect 로 강제) · 롤링 테마는 외곽이 연속된 링친화
-// 형태(donut/rect) · 일반·승리·상하이 테마는 비트맵 실루엣(shared/board.ts SILHOUETTE_VARIANTS).
+// 모드별 제약: UP 테마는 rect 강제(생성기가 무시하고 rect 로 강제) · 롤링 테마는 마스크 유효 칸만
+// 회전 링으로 삼는다. 일반·롤링·승리·상하이 테마는 비트맵 실루엣(shared/board.ts SILHOUETTE_VARIANTS).
 export const MAP_THEMES: Record<string, MapThemeDef> = {
-  "straw-hat": { mask: "donut" }, // 밀짚모자(롤링) — 챙(테두리 링) 모양, 회전 친화
+  "straw-hat": { mask: "strawhat" }, // 밀짚모자(롤링) — 밀짚모자 실루엣
   "devil-fruit": { mask: "apple" }, // 악마의 열매(일반) — 둥근 과실 실루엣
   "monster-ball": { mask: "rect" }, // 몬스터볼(UP) — rect 강제, 배경은 상하 이분할 색상으로 표현
   pikachu: { mask: "pikachu" }, // 피카츄(상하이) — 양 귀+둥근 머리 실루엣
@@ -22,10 +22,10 @@ export const MAP_THEMES: Record<string, MapThemeDef> = {
   "jolly-roger": { mask: "skull" }, // 해적깃발(일반) — 해골 실루엣
   magikarp: { mask: "rect" }, // 잉어킹(롤링) — 꽉 찬 사각, 회전 친화, 배경은 주홍·금빛 물결 톤
   ditto: { mask: "rect" }, // 메타몽(UP) — rect 강제, 배경은 연보라 젤리 톤
-  luffy: { mask: "strawhat" }, // 루피(승리) — 밀짚모자 실루엣
+  whitebeard: { mask: "whitebeard" }, // 흰수염해적단(승리) — 십자+해골+수염 실루엣
   zeus: { mask: "zeus" }, // 제우스(상하이) — 나미의 뇌운 호미
   unown: { mask: "unown" }, // 안농(일반) — 물음표 폼 실루엣
-  chopper: { mask: "donut" }, // 초파(롤링) — 둥근 순록뿔 링, 회전 친화
+  laboon: { mask: "laboon" }, // 라분(롤링) — 고래+꼬리 실루엣
   "navy-road": { mask: "rect" }, // 해군로(UP) — rect 강제, 해군 네이비 톤
 };
 

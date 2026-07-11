@@ -46,11 +46,11 @@ export const MAP_PRESETS: MapPreset[] = [
   preset({ id: "jolly-roger",  emoji: "☠️", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "jolly-roger" }),
   preset({ id: "magikarp",     emoji: "🐟", iconUrl: POKE_SPRITE + "129.png", mapMode: "rolling",  difficulty: "easy", game: "pokemon", theme: "magikarp" }),
   preset({ id: "ditto",        emoji: "🟣", iconUrl: POKE_SPRITE + "132.png", mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "ditto" }),
-  preset({ id: "luffy",        emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "luffy" }),
+  preset({ id: "whitebeard",   emoji: "⚔️", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "whitebeard" }),
   preset({ id: "zeus",         emoji: "⛈️", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "zeus" }),
   preset({ id: "sudowoodo",    emoji: "🌳", iconUrl: POKE_SPRITE + "185.png", mapMode: "normal", difficulty: "easy", game: "pokemon", theme: "sudowoodo" }),
   preset({ id: "unown",        emoji: "❓", iconUrl: POKE_SPRITE + "201.png", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "unown" }),
-  preset({ id: "chopper",      emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" }),
+  preset({ id: "laboon",       emoji: "🐋", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "laboon" }),
   preset({ id: "navy-road",    emoji: "⚓", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "navy-road" }),
 ];
 

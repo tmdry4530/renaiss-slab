@@ -525,9 +525,10 @@ h2 { font-size: 16px; margin: 0; }
     radial-gradient(75% 55% at 38% 18%, rgba(255, 245, 255, .72) 0%, rgba(255, 245, 255, 0) 48%),
     radial-gradient(120% 120% at 50% 15%, #e3b8f5 0%, #ad70cc 58%, #67427f 100%);
 }
-.map-theme-luffy {
+.map-theme-whitebeard {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
-    radial-gradient(120% 120% at 50% 15%, #ff9a6a 0%, #e6432b 55%, #6e160f 100%);
+    radial-gradient(100% 75% at 50% 12%, rgba(255,255,255,.9) 0%, rgba(255,255,255,0) 52%),
+    linear-gradient(160deg, #f8f4e8 0%, #d8d1bd 48%, #8f897b 100%);
 }
 .map-theme-zeus {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
@@ -539,9 +540,10 @@ h2 { font-size: 16px; margin: 0; }
     radial-gradient(100% 75% at 50% 8%, rgba(255, 229, 157, .72) 0%, rgba(255, 229, 157, 0) 55%),
     linear-gradient(160deg, #c9a66b 0%, #8b6d42 55%, #473721 100%);
 }
-.map-theme-chopper {
+.map-theme-laboon {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
-    radial-gradient(120% 120% at 50% 15%, #ffd3e6 0%, #ec84ab 55%, #8a3a5c 100%);
+    radial-gradient(110% 75% at 45% 12%, rgba(83, 178, 218, .65) 0%, rgba(83, 178, 218, 0) 48%),
+    linear-gradient(160deg, #255f89 0%, #123e67 52%, #071d38 100%);
 }
 .map-theme-navy-road {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),

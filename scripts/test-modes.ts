@@ -92,6 +92,16 @@ console.log("[롤링]");
   const bm = generateBoard(pool, "normal", 12, { mapMode: "rolling", mask: "donut" });
   rollRight(bm);
   check("마스크 보드 롤링: 유효 칸 위 유지", bm.tiles.filter((t) => !t.removed).every((t) => bm.mask[t.r - 1][t.c - 1]));
+  const strawhat = generateBoard(pool, "easy", 13, { mapMode: "rolling", mask: "strawhat" });
+  const strawhatPositions = new Set(strawhat.tiles.map((t) => t.r + "," + t.c));
+  rollRight(strawhat);
+  const rolledStrawhatPositions = new Set(strawhat.tiles.map((t) => t.r + "," + t.c));
+  check(
+    "밀짚모자 실루엣 롤링: 유효 칸 위 유지·좌표 순열 보존",
+    strawhat.tiles.filter((t) => !t.removed).every((t) => strawhat.mask[t.r - 1][t.c - 1]) &&
+      rolledStrawhatPositions.size === strawhatPositions.size &&
+      [...strawhatPositions].every((position) => rolledStrawhatPositions.has(position))
+  );
 }
 
 // ── 4) UP: 타이머 상승(upRise)·초기 하단 배치·reserve 감소 ────
@@ -288,7 +298,7 @@ console.log("[점수·순위]");
 console.log("[테마 맵 실루엣]");
 {
   const THEME_MAPS: { theme: string; mode: MapMode; diff: DifficultyKey; sil: boolean }[] = [
-    { theme: "straw-hat",    mode: "rolling",  diff: "easy", sil: false }, // 롤링 — donut(링)
+    { theme: "straw-hat",    mode: "rolling",  diff: "easy", sil: true },  // 롤링 — strawhat 실루엣
     { theme: "devil-fruit",  mode: "normal",   diff: "easy", sil: true },  // 일반 — apple 실루엣
     { theme: "monster-ball", mode: "up",       diff: "easy", sil: false }, // UP — rect 강제
     { theme: "pikachu",      mode: "shanghai", diff: "hard", sil: true },  // 상하이 — pikachu 실루엣
@@ -296,15 +306,19 @@ console.log("[테마 맵 실루엣]");
     { theme: "jolly-roger",  mode: "normal",   diff: "easy", sil: true },  // 일반 — skull 실루엣
     { theme: "magikarp",     mode: "rolling",  diff: "easy", sil: false }, // 롤링 — rect
     { theme: "ditto",        mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
-    { theme: "luffy",        mode: "victory",  diff: "hard", sil: true },  // 승리 — star 실루엣
+    { theme: "whitebeard",   mode: "victory",  diff: "hard", sil: true },  // 승리 — whitebeard 실루엣
     { theme: "zeus",         mode: "shanghai", diff: "easy", sil: true },  // 상하이 — zeus(뇌운) 실루엣
     { theme: "unown",        mode: "normal",   diff: "hard", sil: true },  // 일반 — unown 실루엣
-    { theme: "chopper",      mode: "rolling",  diff: "easy", sil: false }, // 롤링 — donut(링)
+    { theme: "laboon",       mode: "rolling",  diff: "easy", sil: true },  // 롤링 — laboon 실루엣
     { theme: "navy-road",    mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
   ];
   const RUNS = 100;
   for (const tm of THEME_MAPS) {
     const mask = maskForTheme(tm.theme);
+    check(
+      `${tm.theme} 테마 마스크 종류 일치`,
+      mask !== undefined && (tm.sil ? !MASK_KINDS.includes(mask) : MASK_KINDS.includes(mask))
+    );
     let ok = true, evenOk = true, moveOk = true, onMaskOk = true, firstErr = "";
     for (let s = 0; s < RUNS && ok; s++) {
       try {

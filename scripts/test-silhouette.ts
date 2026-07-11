@@ -117,7 +117,9 @@ interface SilhouetteCase {
 
 const SILHOUETTE_CASES: SilhouetteCase[] = [
   { mask: "charizard", mode: "victory", layer0: { easy: 76, normal: 110, hard: 142 } },
-  { mask: "strawhat", mode: "victory", layer0: { easy: 56, normal: 88, hard: 108 } },
+  { mask: "strawhat", mode: "rolling", layer0: { easy: 56, normal: 88, hard: 108 } },
+  { mask: "whitebeard", mode: "victory", layer0: { easy: 66, normal: 86, hard: 106 } },
+  { mask: "laboon", mode: "rolling", layer0: { easy: 58, normal: 82, hard: 108 } },
   { mask: "zeus", mode: "shanghai", layer0: { easy: 62, normal: 80, hard: 106 } },
   { mask: "sudowoodo", mode: "normal", layer0: { easy: 48, normal: 76, hard: 90 } },
   { mask: "skull", mode: "normal", layer0: { easy: 44, normal: 76, hard: 88 } },
@@ -230,12 +232,12 @@ check("layer 0 난이도 상한 준수: easy ≤80 / normal ≤110 / hard ≤150
 check("총 타일 수 짝수 (상하이 상층 포함)", oddTotal === 0);
 check("데드락 0건 (모든 피카츄 보드 hasMove)", deadlocks === 0);
 check("결정성: 같은 시드 2회 완전 동일", detFail === 0);
-check("신규 7종 캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", silhouetteCanvasFail === 0);
-check("신규 7종 layer 0 타일 수 핀 고정", silhouetteLayer0Fail === 0);
-check("신규 7종 layer 0 상한 준수: easy ≤90 / normal ≤130 / hard ≤160", silhouetteLayer0LimitFail === 0);
-check("신규 7종 총 타일 수 짝수 (상하이 상층 포함)", silhouetteOddTotal === 0);
-check("신규 7종 데드락 0건 (모든 보드 hasMove)", silhouetteDeadlocks === 0);
-check("신규 7종 결정성: 같은 시드 2회 완전 동일", silhouetteDetFail === 0);
+check("신규 9종 캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", silhouetteCanvasFail === 0);
+check("신규 9종 layer 0 타일 수 핀 고정", silhouetteLayer0Fail === 0);
+check("신규 9종 layer 0 상한 준수: easy ≤90 / normal ≤130 / hard ≤160", silhouetteLayer0LimitFail === 0);
+check("신규 9종 총 타일 수 짝수 (상하이 상층 포함)", silhouetteOddTotal === 0);
+check("신규 9종 데드락 0건 (모든 보드 hasMove)", silhouetteDeadlocks === 0);
+check("신규 9종 결정성: 같은 시드 2회 완전 동일", silhouetteDetFail === 0);
 check("UP 은 mask:'pikachu' 지정에도 rect 강제", upRectFail === 0);
 check("UP 은 기존 치수 유지: rows 4/6/8, cols 10", upSizeFail === 0);
 

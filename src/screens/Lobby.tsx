@@ -1,7 +1,6 @@
 // F-02/F-03 대기(로비) 화면 — 방 목록 조회·입장, 방 만들기, 혼자 바로 하기, 프로필/통계·마켓 사이드바
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
-  MAP_MODES,
   type DifficultyKey,
   type GameSel,
   type MapMode,
@@ -12,6 +11,7 @@ import {
 import { getSocket } from "../net.ts";
 import { diffLabel, errText, gameLabel, modeLabel } from "../labels.ts";
 import { t, useLang } from "../i18n.ts";
+import { MAP_PRESETS, type MapPreset } from "./MapSelect.tsx";
 
 interface Props {
   nickname: string;
@@ -44,33 +44,43 @@ const STAT_WINS_KEY = "rsk:stats:wins";
 // localStorage draft 검증용 화이트리스트 — 옛 버전의 값(예: game:"mixed")이 남아있어도
 // 서버가 거부하지 않도록 유효 enum 이 아니면 기본값으로 폴백한다.
 const GAME_VALUES: GameSel[] = ["pokemon", "one-piece"];
-const DIFFICULTY_VALUES: DifficultyKey[] = ["easy", "normal", "hard"];
-const MAP_MODE_VALUES: MapMode[] = MAP_MODES.map((m) => m.key);
+const DEFAULT_PRESET_IDS: Record<GameSel, string> = {
+  pokemon: "sudowoodo",
+  "one-piece": "devil-fruit",
+};
+
+function defaultPresetForGame(game: GameSel): MapPreset {
+  const presetId = DEFAULT_PRESET_IDS[game];
+  const preset = MAP_PRESETS.find((candidate) => candidate.id === presetId);
+  if (!preset) throw new Error(`기본 맵 프리셋을 찾을 수 없습니다: ${presetId}`);
+  return preset;
+}
 
 function loadDraft(nickname: string): DraftConfig {
+  const defaultPreset = defaultPresetForGame("pokemon");
   const base: DraftConfig = {
     name: t("lobby.defaultRoomName", { name: nickname }),
     maxPlayers: 4,
     visibility: "public",
     password: "",
     game: "pokemon",
-    mapMode: "normal",
-    difficulty: "normal",
+    mapMode: defaultPreset.mapMode,
+    difficulty: defaultPreset.difficulty,
   };
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<DraftConfig>;
+      const game = GAME_VALUES.includes(parsed.game as GameSel) ? (parsed.game as GameSel) : base.game;
+      const preset = defaultPresetForGame(game);
       return {
         ...base,
         ...parsed,
         name: base.name,
         password: "",
-        game: GAME_VALUES.includes(parsed.game as GameSel) ? (parsed.game as GameSel) : base.game,
-        mapMode: MAP_MODE_VALUES.includes(parsed.mapMode as MapMode) ? (parsed.mapMode as MapMode) : base.mapMode,
-        difficulty: DIFFICULTY_VALUES.includes(parsed.difficulty as DifficultyKey)
-          ? (parsed.difficulty as DifficultyKey)
-          : base.difficulty,
+        game,
+        mapMode: preset.mapMode,
+        difficulty: preset.difficulty,
       };
     }
   } catch {
@@ -205,14 +215,16 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
   }
 
   function buildConfig(d: DraftConfig): RoomConfig {
+    const preset = defaultPresetForGame(d.game);
     return {
       name: d.name.trim() || t("lobby.defaultRoomName", { name: nickname }),
       visibility: d.visibility,
       ...(d.visibility === "private" && d.password ? { password: d.password } : {}),
       maxPlayers: d.maxPlayers,
       game: d.game,
-      mapMode: d.mapMode,
-      difficulty: d.difficulty,
+      mapMode: preset.mapMode,
+      difficulty: preset.difficulty,
+      theme: preset.theme,
     };
   }
 
@@ -236,13 +248,15 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
   function soloPlay() {
     if (busy) return;
     setBusy(true);
+    const preset = defaultPresetForGame(draft.game);
     const cfg: RoomConfig = {
       name: t("lobby.soloRoomName", { name: nickname }),
       visibility: "public",
       maxPlayers: 1,
       game: draft.game,
-      mapMode: draft.mapMode,
-      difficulty: draft.difficulty,
+      mapMode: preset.mapMode,
+      difficulty: preset.difficulty,
+      theme: preset.theme,
     };
     getSocket().emit("room:create", cfg, (r) => {
       if (!r.ok || !r.data) {
@@ -488,7 +502,14 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
               <label>{t("lobby.cards")}</label>
               <div className="seg">
                 {(["pokemon", "one-piece"] as GameSel[]).map((g) => (
-                  <button key={g} className={draft.game === g ? "on" : ""} onClick={() => saveDraft({ ...draft, game: g })}>
+                  <button
+                    key={g}
+                    className={draft.game === g ? "on" : ""}
+                    onClick={() => {
+                      const preset = defaultPresetForGame(g);
+                      saveDraft({ ...draft, game: g, mapMode: preset.mapMode, difficulty: preset.difficulty });
+                    }}
+                  >
                     {gameLabel(g)}
                   </button>
                 ))}
