@@ -108,6 +108,18 @@ async function main() {
   const batch = flat.slice(rot * PER_RUN, rot * PER_RUN + PER_RUN);
   console.log(`이번 배치: ${batch.length}개 쿼리 (회전 ${rot + 1}/${batches}, 전체 ${flat.length})`);
 
+  // 신규 카드 이미지 생존 검증 — CDN 에 에셋이 없는 카드(404)가 풀에 들어와
+  // 게임에서 카드명 폴백만 보이는 문제 방지 (2026-07-11 전수 스캔에서 14장 발견·제거).
+  const imageAlive = async (card) => {
+    const url = card.imageUrlThumb || card.imageUrl;
+    try {
+      const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(8000) });
+      return r.status === 200;
+    } catch {
+      return false; // 네트워크 오류는 보수적으로 제외 — 다음 프리페치에서 재시도됨
+    }
+  };
+
   for (const { game, q } of batch) {
     try {
       const results = await search(q);
@@ -116,7 +128,10 @@ async function main() {
         if (c.game !== game) continue;
         if (!c.imageUrl || !c.href) continue;
         const card = normalize(c);
-        if (!byId.has(card.cardId)) { byId.set(card.cardId, card); added++; }
+        if (byId.has(card.cardId)) continue;
+        if (!(await imageAlive(card))) { console.log("    (이미지 404 제외: " + card.name + ")"); continue; }
+        byId.set(card.cardId, card);
+        added++;
       }
       console.log("  " + game + "/" + q + ": " + results.length + " (+" + added + ")");
       if (added) await writePool(); // 부분 진행 즉시 저장
