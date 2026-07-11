@@ -10,6 +10,9 @@ const DEFAULT_CANVASES = [
   { name: "normal", rows: 10, cols: 13 },
   { name: "hard", rows: 12, cols: 16 },
 ];
+const BACKGROUND_MODES = ["white", "auto", "dark"];
+const DEFAULT_BACKGROUND_TOLERANCE = 60;
+const CORNER_SAMPLE_SIZE = 8;
 const DIRECTIONS = [
   [-1, 0],
   [1, 0],
@@ -27,11 +30,19 @@ function parseArguments(argv) {
   let threshold = 0.4;
   let canvases = DEFAULT_CANVASES;
   let holes = false;
+  let backgroundMode = "white";
+  let backgroundTolerance = DEFAULT_BACKGROUND_TOLERANCE;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
 
-    if (argument === "--name" || argument === "--threshold" || argument === "--canvas") {
+    if (
+      argument === "--name" ||
+      argument === "--threshold" ||
+      argument === "--canvas" ||
+      argument === "--bg" ||
+      argument === "--bg-tolerance"
+    ) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) {
         fail(`${argument} 옵션에 값이 필요합니다.`);
@@ -39,7 +50,9 @@ function parseArguments(argv) {
       index += 1;
       if (argument === "--name") name = value;
       else if (argument === "--threshold") threshold = Number(value);
-      else canvases = parseCanvases(value);
+      else if (argument === "--canvas") canvases = parseCanvases(value);
+      else if (argument === "--bg") backgroundMode = value;
+      else backgroundTolerance = Number(value);
       continue;
     }
 
@@ -55,6 +68,14 @@ function parseArguments(argv) {
       canvases = parseCanvases(argument.slice("--canvas=".length));
       continue;
     }
+    if (argument.startsWith("--bg=")) {
+      backgroundMode = argument.slice("--bg=".length);
+      continue;
+    }
+    if (argument.startsWith("--bg-tolerance=")) {
+      backgroundTolerance = Number(argument.slice("--bg-tolerance=".length));
+      continue;
+    }
     if (argument === "--holes") {
       holes = true;
       continue;
@@ -66,18 +87,34 @@ function parseArguments(argv) {
 
   if (!imagePath) {
     fail(
-      "사용법: node scripts/gen-silhouette.mjs <image.png> [--name pikachu] [--threshold 0.4] [--canvas 14x18] [--holes]",
+      "사용법: node scripts/gen-silhouette.mjs <image.png> [--name pikachu] [--threshold 0.4] [--canvas 14x18] [--holes] [--bg white|auto|dark] [--bg-tolerance 60]",
     );
   }
   if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
     fail("--threshold는 0보다 크고 1 이하인 숫자여야 합니다.");
+  }
+  if (!BACKGROUND_MODES.includes(backgroundMode)) {
+    fail(
+      `잘못된 --bg 값입니다: ${JSON.stringify(backgroundMode)} (white, auto, dark 중 하나여야 합니다.)`,
+    );
+  }
+  if (!Number.isFinite(backgroundTolerance) || backgroundTolerance <= 0) {
+    fail("--bg-tolerance는 0보다 큰 숫자여야 합니다.");
   }
 
   const fallbackName = basename(imagePath, extname(imagePath));
   if (name === undefined) name = fallbackName;
   if (!name.trim()) fail("--name은 비어 있을 수 없습니다.");
 
-  return { imagePath, name, threshold, canvases, holes };
+  return {
+    imagePath,
+    name,
+    threshold,
+    canvases,
+    holes,
+    backgroundMode,
+    backgroundTolerance,
+  };
 }
 
 function parseCanvases(value) {
@@ -229,9 +266,101 @@ function decodePng(buffer) {
   };
 }
 
-function createForegroundMask(image) {
+function colorDistance(first, second) {
+  return Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]);
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function medianColor(colors) {
+  return [0, 1, 2].map((channel) => median(colors.map((color) => color[channel])));
+}
+
+function sampleCornerColors(image) {
+  const sampleWidth = Math.min(CORNER_SAMPLE_SIZE, image.width);
+  const sampleHeight = Math.min(CORNER_SAMPLE_SIZE, image.height);
+  const corners = [
+    [0, 0],
+    [image.width - sampleWidth, 0],
+    [0, image.height - sampleHeight],
+    [image.width - sampleWidth, image.height - sampleHeight],
+  ];
+
+  return corners.map(([startX, startY]) => {
+    const colors = [];
+    for (let y = startY; y < startY + sampleHeight; y += 1) {
+      for (let x = startX; x < startX + sampleWidth; x += 1) {
+        const offset = (y * image.width + x) * image.bytesPerPixel;
+        colors.push([
+          image.pixels[offset],
+          image.pixels[offset + 1],
+          image.pixels[offset + 2],
+        ]);
+      }
+    }
+    return medianColor(colors);
+  });
+}
+
+function detectBackgroundColor(image, tolerance) {
+  const cornerColors = sampleCornerColors(image);
+  const pairs = [];
+
+  for (let first = 0; first < cornerColors.length; first += 1) {
+    for (let second = first + 1; second < cornerColors.length; second += 1) {
+      pairs.push({
+        first,
+        second,
+        distance: colorDistance(cornerColors[first], cornerColors[second]),
+      });
+    }
+  }
+
+  if (pairs.every((pair) => pair.distance <= tolerance)) return medianColor(cornerColors);
+
+  const closePairs = pairs.filter((pair) => pair.distance <= tolerance);
+  const candidates = (closePairs.length > 0 ? closePairs : pairs).map((pair) => {
+    const members = cornerColors
+      .map((color, index) => ({ color, index }))
+      .filter(
+        ({ color }) =>
+          colorDistance(color, cornerColors[pair.first]) <= tolerance ||
+          colorDistance(color, cornerColors[pair.second]) <= tolerance,
+      )
+      .map(({ index }) => index);
+
+    if (members.length < 2) members.push(pair.first, pair.second);
+    return { ...pair, members: [...new Set(members)] };
+  });
+
+  candidates.sort(
+    (a, b) =>
+      b.members.length - a.members.length ||
+      a.distance - b.distance ||
+      a.first - b.first ||
+      a.second - b.second,
+  );
+  const selected = candidates[0];
+  const backgroundColor = medianColor(selected.members.map((index) => cornerColors[index]));
+  const formatColor = (color) => `rgb(${color.map((value) => Math.round(value)).join(", ")})`;
+  console.warn(
+    `경고: 네 모서리 배경색 차이가 --bg-tolerance ${tolerance}을 초과합니다. ` +
+      `가장 빈도 높은 모서리 그룹(${selected.members.map((index) => index + 1).join(", ")})의 ` +
+      `${formatColor(backgroundColor)}을 배경색으로 사용합니다.`,
+  );
+  return backgroundColor;
+}
+
+function createForegroundMask(image, backgroundMode, backgroundTolerance) {
   const mask = new Uint8Array(image.width * image.height);
   const darkMask = new Uint8Array(image.width * image.height);
+  const backgroundColor =
+    backgroundMode === "auto" ? detectBackgroundColor(image, backgroundTolerance) : undefined;
   let minX = image.width;
   let minY = image.height;
   let maxX = -1;
@@ -244,7 +373,15 @@ function createForegroundMask(image) {
       const green = image.pixels[pixelOffset + 1];
       const blue = image.pixels[pixelOffset + 2];
       const alpha = image.colorType === 6 ? image.pixels[pixelOffset + 3] : 255;
-      const isBackground = alpha < 40 || (red > 238 && green > 238 && blue > 238);
+      let isBackground = alpha < 40;
+      if (!isBackground && backgroundMode === "white") {
+        isBackground = red > 238 && green > 238 && blue > 238;
+      } else if (!isBackground && backgroundMode === "dark") {
+        isBackground = red < 60 && green < 60 && blue < 60;
+      } else if (!isBackground && backgroundMode === "auto") {
+        isBackground =
+          colorDistance([red, green, blue], backgroundColor) < backgroundTolerance;
+      }
 
       if (!isBackground) {
         mask[y * image.width + x] = 1;
@@ -529,11 +666,17 @@ function printResults(name, results, includeHoles) {
 }
 
 function main() {
-  const { imagePath, name, threshold, canvases, holes: includeHoles } = parseArguments(
-    process.argv.slice(2),
-  );
+  const {
+    imagePath,
+    name,
+    threshold,
+    canvases,
+    holes: includeHoles,
+    backgroundMode,
+    backgroundTolerance,
+  } = parseArguments(process.argv.slice(2));
   const image = decodePng(readFileSync(imagePath));
-  const foreground = createForegroundMask(image);
+  const foreground = createForegroundMask(image, backgroundMode, backgroundTolerance);
   const results = canvases.map((canvas) => {
     const { cells, holes } = cleanCanvas(
       sampleCanvas(foreground, image.width, canvas, threshold),
