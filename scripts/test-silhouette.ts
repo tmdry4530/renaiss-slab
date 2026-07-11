@@ -8,6 +8,7 @@ import {
   toTileStates,
   type Board,
   type GenerateStats,
+  type MaskKind,
 } from "../shared/board.ts";
 import type { DifficultyKey, MapMode } from "../shared/protocol.ts";
 
@@ -108,6 +109,61 @@ for (const mode of MODES) {
   }
 }
 
+interface SilhouetteCase {
+  mask: MaskKind;
+  mode: MapMode;
+  layer0: Record<DifficultyKey, number>;
+}
+
+const SILHOUETTE_CASES: SilhouetteCase[] = [
+  { mask: "charizard", mode: "victory", layer0: { easy: 76, normal: 110, hard: 142 } },
+  { mask: "strawhat", mode: "victory", layer0: { easy: 56, normal: 88, hard: 108 } },
+  { mask: "tangerine", mode: "shanghai", layer0: { easy: 70, normal: 110, hard: 136 } },
+  { mask: "sudowoodo", mode: "normal", layer0: { easy: 48, normal: 76, hard: 90 } },
+  { mask: "skull", mode: "normal", layer0: { easy: 44, normal: 76, hard: 88 } },
+  { mask: "apple", mode: "normal", layer0: { easy: 82, normal: 122, hard: 150 } },
+];
+const SILHOUETTE_SEEDS = 30;
+const SILHOUETTE_CANVAS: Record<DifficultyKey, { rows: number; cols: number; layer0Max: number }> = {
+  easy: { rows: 10, cols: 13, layer0Max: 90 },
+  normal: { rows: 12, cols: 16, layer0Max: 130 },
+  hard: { rows: 14, cols: 18, layer0Max: 160 },
+};
+const observedLayer0 = new Map<string, Set<number>>();
+let silhouetteCanvasFail = 0;
+let silhouetteLayer0Fail = 0;
+let silhouetteLayer0LimitFail = 0;
+let silhouetteOddTotal = 0;
+let silhouetteDeadlocks = 0;
+let silhouetteDetFail = 0;
+
+for (const silhouette of SILHOUETTE_CASES) {
+  for (const diff of DIFFS) {
+    const expected = SILHOUETTE_CANVAS[diff];
+    const observed = new Set<number>();
+    observedLayer0.set(`${silhouette.mask}/${diff}`, observed);
+    for (let s = 0; s < SILHOUETTE_SEEDS; s++) {
+      const seed = BASE_SEED + 100_000 + s * 131;
+      const board = generateBoard(pool, diff, seed, {
+        mapMode: silhouette.mode,
+        mask: silhouette.mask,
+      });
+      const repeated = generateBoard(pool, diff, seed, {
+        mapMode: silhouette.mode,
+        mask: silhouette.mask,
+      });
+      const layer0 = board.tiles.filter((tile) => tile.layer === 0).length;
+      observed.add(layer0);
+      if (board.rows !== expected.rows || board.cols !== expected.cols) silhouetteCanvasFail++;
+      if (layer0 !== silhouette.layer0[diff]) silhouetteLayer0Fail++;
+      if (layer0 > expected.layer0Max) silhouetteLayer0LimitFail++;
+      if (board.tiles.length % 2 !== 0) silhouetteOddTotal++;
+      if (!hasMove(board)) silhouetteDeadlocks++;
+      if (sig(board) !== sig(repeated)) silhouetteDetFail++;
+    }
+  }
+}
+
 // UP 은 테마 마스크 지정과 무관하게 rect 및 기존 난이도 크기를 유지해야 한다.
 const UP_SEEDS = 10;
 let upRectFail = 0;
@@ -155,6 +211,17 @@ for (const mode of MODES) {
 }
 console.log("  주: p=pikachu, r=rect. reshuf 비교는 정보성 계측이며 임계값 단언이 아니다.");
 
+console.log(
+  `\n[신규 실루엣 퍼즈] 조합당 시드 ${SILHOUETTE_SEEDS} · 보드 ${SILHOUETTE_CASES.length * DIFFS.length * SILHOUETTE_SEEDS}`
+);
+for (const silhouette of SILHOUETTE_CASES) {
+  const counts = DIFFS.map((diff) => {
+    const actual = [...observedLayer0.get(`${silhouette.mask}/${diff}`)!].join("/");
+    return `${diff} ${actual} (expected ${silhouette.layer0[diff]})`;
+  }).join(" · ");
+  console.log(`  ${silhouette.mask.padEnd(11)} ${counts}`);
+}
+
 console.log("\n[단언]");
 check("캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", canvasFail === 0);
 check("layer 0 타일 수 일치: easy 72 / normal 102 / hard 150", layer0CountFail === 0);
@@ -162,6 +229,12 @@ check("layer 0 난이도 상한 준수: easy ≤80 / normal ≤110 / hard ≤150
 check("총 타일 수 짝수 (상하이 상층 포함)", oddTotal === 0);
 check("데드락 0건 (모든 피카츄 보드 hasMove)", deadlocks === 0);
 check("결정성: 같은 시드 2회 완전 동일", detFail === 0);
+check("신규 6종 캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", silhouetteCanvasFail === 0);
+check("신규 6종 layer 0 타일 수 핀 고정", silhouetteLayer0Fail === 0);
+check("신규 6종 layer 0 상한 준수: easy ≤90 / normal ≤130 / hard ≤160", silhouetteLayer0LimitFail === 0);
+check("신규 6종 총 타일 수 짝수 (상하이 상층 포함)", silhouetteOddTotal === 0);
+check("신규 6종 데드락 0건 (모든 보드 hasMove)", silhouetteDeadlocks === 0);
+check("신규 6종 결정성: 같은 시드 2회 완전 동일", silhouetteDetFail === 0);
 check("UP 은 mask:'pikachu' 지정에도 rect 강제", upRectFail === 0);
 check("UP 은 기존 치수 유지: rows 4/6/8, cols 10", upSizeFail === 0);
 

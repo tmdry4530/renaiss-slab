@@ -497,6 +497,10 @@ h2 { font-size: 16px; margin: 0; }
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
     radial-gradient(120% 140% at 50% 105%, #ffd97a 0%, #ff7b2e 42%, #c23a1a 72%, #4a1006 100%);
 }
+.map-theme-sudowoodo {
+  background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
+    linear-gradient(160deg, #89b95a 0%, #4f7d35 38%, #80552f 68%, #3d2819 100%);
+}
 .map-theme-jolly-roger {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
     radial-gradient(120% 120% at 50% 15%, #4a4a54 0%, #1c1c22 55%, #050506 100%);

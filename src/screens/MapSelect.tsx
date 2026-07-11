@@ -10,7 +10,7 @@ import type {
 } from "../../shared/protocol.ts";
 import { gameLabel, modeLabel } from "../labels.ts";
 
-// ── 프리셋 정의 (테마명 상수 배열, 13종) ─────────────────────────
+// ── 프리셋 정의 (테마명 상수 배열, 14종) ─────────────────────────
 // theme: 배경/보드모양 테마 키(= id, shared/mapThemes.ts MAP_THEMES 참조) — 이름↔디자인 일치(스펙 A).
 export interface MapPreset {
   id: string;
@@ -38,6 +38,7 @@ export const MAP_PRESETS: MapPreset[] = [
   { id: "squirtle",     name: "꼬북이",     emoji: "💧", iconUrl: POKE_SPRITE + "7.png",   mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "squirtle" },
   { id: "luffy",        name: "루피",       emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "luffy" },
   { id: "nami",         name: "나미",       emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "nami" },
+  { id: "sudowoodo",    name: "꼬지모",     emoji: "🌳", iconUrl: POKE_SPRITE + "185.png", mapMode: "normal", difficulty: "easy", game: "pokemon", theme: "sudowoodo" },
   { id: "mewtwo",       name: "뮤츠",       emoji: "💜", iconUrl: POKE_SPRITE + "150.png", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" },
   { id: "chopper",      name: "초파",       emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" },
   { id: "going-merry",  name: "고잉메리호", emoji: "⛵", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "going-merry" },
