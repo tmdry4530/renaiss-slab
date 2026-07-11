@@ -126,7 +126,8 @@ const SILHOUETTE_CASES: SilhouetteCase[] = [
   { mask: "sudowoodo", mode: "normal", layer0: { easy: 46, normal: 82, hard: 90 } },
   { mask: "skull", mode: "normal", layer0: { easy: 62, normal: 70, hard: 88 } },
   { mask: "apple", mode: "normal", layer0: { easy: 82, normal: 122, hard: 150 } },
-  { mask: "unown", mode: "normal", layer0: { easy: 38, normal: 56, hard: 62 } },
+  // 안농 링 도안 — hard 만 exact(프리셋 고급 전용), easy/normal 은 폴백 측정값 핀
+  { mask: "unown", mode: "normal", layer0: { easy: 48, normal: 72, hard: 88 } },
 ];
 const SILHOUETTE_SEEDS = 30;
 const SILHOUETTE_CANVAS: Record<DifficultyKey, { rows: number; cols: number; layer0Max: number }> = {
