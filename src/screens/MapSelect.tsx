@@ -2,11 +2,12 @@
 // IP(game)는 방 생성 시 확정되어 여기서 바꾸지 않는다 — 프리셋 목록도 room.game 과 일치하는 것만 노출.
 // 선택 완료 시 호스트가 room:config { mapMode, difficulty, theme } emit (Room 에서 처리).
 import { useState, type CSSProperties } from "react";
-import type {
-  DifficultyKey,
-  GameSel,
-  MapMode,
-  RoomDetail,
+import {
+  DISABLED_MAP_MODES,
+  type DifficultyKey,
+  type GameSel,
+  type MapMode,
+  type RoomDetail,
 } from "../../shared/protocol.ts";
 import { t } from "../i18n.ts";
 import { gameLabel, modeLabel } from "../labels.ts";
@@ -95,7 +96,8 @@ const ipClass = (g: MapPreset["game"]): string => (g === "pokemon" ? "pokemon" :
 type TypeFilter = MapMode | "all";
 type DiffFilter = DifficultyKey | "all";
 
-const TYPE_OPTS: TypeFilter[] = ["all", "normal", "rolling", "up", "victory", "shanghai"];
+const TYPE_OPTS: TypeFilter[] = (["all", "normal", "rolling", "up", "victory", "shanghai"] as TypeFilter[])
+  .filter((mode) => mode === "all" || !DISABLED_MAP_MODES.includes(mode));
 // 프리셋 난이도는 초급/고급만 존재 → 목업대로 전체/초급/고급 (중급 제외, 빈 결과 방지)
 const DIFF_OPTS: DiffFilter[] = ["all", "easy", "hard"];
 
@@ -112,6 +114,7 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
     () =>
       MAP_PRESETS.find(
         (p) =>
+          !DISABLED_MAP_MODES.includes(p.mapMode) &&
           p.mapMode === room.mapMode &&
           p.difficulty === room.difficulty &&
           p.game === room.game &&
@@ -122,6 +125,7 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
   // IP(카드 세트)는 방 생성 시 확정되어 바뀌지 않는다 — 대기실 맵 선택은 그 IP 맵만 노출(스펙 B).
   const list = MAP_PRESETS.filter(
     (p) =>
+      !DISABLED_MAP_MODES.includes(p.mapMode) &&
       p.game === room.game &&
       (typeF === "all" || p.mapMode === typeF) &&
       (diffF === "all" || p.difficulty === diffF)

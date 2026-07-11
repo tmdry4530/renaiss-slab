@@ -214,6 +214,13 @@ async function main(): Promise<void> {
   });
   const restBadBody = (await restBad.json()) as any;
   check("POST /api/rooms 인원 초과 400", restBad.status === 400 && restBadBody.error === "badMaxPlayers");
+  const restUp = await fetch(url + "/api/rooms", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...baseCfg({ mapMode: "up" }), nickname: "레스트" }),
+  });
+  const restUpBody = (await restUp.json()) as any;
+  check("POST /api/rooms UP 모드 비활성화 거부", restUp.status === 400 && restUpBody.error === "modeDisabled");
 
   // ── 로비/방 ────────────────────────────────────────────────
   console.log("\n[로비·방]");
@@ -243,6 +250,8 @@ async function main(): Promise<void> {
   check("roomId 6자리 코드", roomId.length === 6);
   const crBad = await emitAck(c1.sock, "room:create", baseCfg({ maxPlayers: 9 }));
   check("잘못된 RoomConfig 거부(인원 9)", !crBad.ok && crBad.error === "badMaxPlayers");
+  const crUp = await emitAck(c1.sock, "room:create", baseCfg({ mapMode: "up" }));
+  check("room:create UP 모드 비활성화 거부", !crUp.ok && crUp.error === "modeDisabled");
 
   const lst = await emitAck<{ rooms: any[] }>(c2.sock, "room:list");
   const found = lst.data!.rooms.find((r) => r.roomId === roomId);
@@ -471,6 +480,8 @@ async function main(): Promise<void> {
   // room:config — 방장만
   const cfgBad = await emitAck(c2.sock, "room:config", { difficulty: "hard" });
   check("room:config notHost", !cfgBad.ok && cfgBad.error === "notHost");
+  const cfgUp = await emitAck(c1.sock, "room:config", { mapMode: "up" });
+  check("room:config UP 모드 비활성화 거부", !cfgUp.ok && cfgUp.error === "modeDisabled");
   const cfgOk = await emitAck<{ room: any }>(c1.sock, "room:config", { difficulty: "normal", game: "one-piece" });
   check("room:config 방장 변경", cfgOk.ok && cfgOk.data!.room.difficulty === "normal" && cfgOk.data!.room.game === "one-piece");
 

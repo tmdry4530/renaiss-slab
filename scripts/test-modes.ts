@@ -19,6 +19,70 @@ const countBy = <T,>(arr: T[], key: (t: T) => string) => {
   return m;
 };
 
+const cellKey = (r: number, c: number): string => `${r},${c}`;
+
+const exteriorBoundaryKeys = (board: Board): Set<string> => {
+  const exterior = Array.from({ length: board.rows }, () => Array(board.cols).fill(false));
+  const queue: { r: number; c: number }[] = [];
+  const enqueue = (r: number, c: number) => {
+    if (r < 0 || r >= board.rows || c < 0 || c >= board.cols || board.mask[r][c] || exterior[r][c]) return;
+    exterior[r][c] = true;
+    queue.push({ r, c });
+  };
+  for (let r = 0; r < board.rows; r++) {
+    enqueue(r, 0);
+    enqueue(r, board.cols - 1);
+  }
+  for (let c = 0; c < board.cols; c++) {
+    enqueue(0, c);
+    enqueue(board.rows - 1, c);
+  }
+  for (let i = 0; i < queue.length; i++) {
+    const { r, c } = queue[i];
+    enqueue(r - 1, c);
+    enqueue(r + 1, c);
+    enqueue(r, c - 1);
+    enqueue(r, c + 1);
+  }
+  const boundary = new Set<string>();
+  for (let r = 0; r < board.rows; r++) {
+    for (let c = 0; c < board.cols; c++) {
+      if (!board.mask[r][c]) continue;
+      if (
+        r === 0 || r === board.rows - 1 || c === 0 || c === board.cols - 1 ||
+        exterior[r - 1]?.[c] || exterior[r + 1]?.[c] || exterior[r]?.[c - 1] || exterior[r]?.[c + 1]
+      ) boundary.add(cellKey(r + 1, c + 1));
+    }
+  }
+  return boundary;
+};
+
+const legacyBoundingRing = (board: Board): string[] => {
+  const validCells = board.mask.flatMap((row, r) => row.flatMap((valid, c) => valid ? [{ r: r + 1, c: c + 1 }] : []));
+  const minR = Math.min(...validCells.map((p) => p.r));
+  const maxR = Math.max(...validCells.map((p) => p.r));
+  const minC = Math.min(...validCells.map((p) => p.c));
+  const maxC = Math.max(...validCells.map((p) => p.c));
+  const ring: string[] = [];
+  const push = (r: number, c: number) => {
+    const key = cellKey(r, c);
+    if (board.mask[r - 1]?.[c - 1] && !ring.includes(key)) ring.push(key);
+  };
+  if (minR === maxR) {
+    for (let c = minC; c <= maxC; c++) push(minR, c);
+    return ring;
+  }
+  if (minC === maxC) {
+    for (let r = minR; r <= maxR; r++) push(r, minC);
+    return ring;
+  }
+  for (let c = minC; c <= maxC; c++) push(minR, c);
+  for (let r = minR + 1; r <= maxR; r++) push(r, maxC);
+  for (let c = maxC - 1; c >= minC; c--) push(maxR, c);
+  for (let r = maxR - 1; r > minR; r--) push(r, minC);
+  return ring;
+};
+
 // ── 1) 시드 재현성 ───────────────────────────────────────────
 console.log("[시드 재현성]");
 {
@@ -68,6 +132,7 @@ console.log("[롤링]");
   const liveCountBefore = snap.filter((p) => !p.removed).length;
   const beforeCount = countBy(b.tiles.filter((t) => !t.removed), (t) => t.matchKey);
   const ring = borderRingCells(b);
+  check("rect 링 셀 집합·시계방향 순서 기존과 동일", JSON.stringify(ring.map((p) => cellKey(p.r, p.c))) === JSON.stringify(legacyBoundingRing(b)));
   const ringSet = new Set(ring.map((p) => p.r + "," + p.c));
   rollRight(b);
   const live = b.tiles.filter((t) => !t.removed);
@@ -90,18 +155,46 @@ console.log("[롤링]");
   check("롤링 후 점유 셀 집합 불변(순열)", new Set(b.tiles.filter((t) => t.layer === 0).map((t) => t.r + "," + t.c)).size === posBefore.size && [...posBefore].every((k) => b.tiles.some((t) => t.layer === 0 && t.r + "," + t.c === k)));
   // 마스크 보드(도넛: 바깥 테두리만 회전)에서도 유효 칸 위 유지
   const bm = generateBoard(pool, "normal", 12, { mapMode: "rolling", mask: "donut" });
+  check("donut 링 셀 집합·시계방향 순서 기존과 동일", JSON.stringify(borderRingCells(bm).map((p) => cellKey(p.r, p.c))) === JSON.stringify(legacyBoundingRing(bm)));
   rollRight(bm);
   check("마스크 보드 롤링: 유효 칸 위 유지", bm.tiles.filter((t) => !t.removed).every((t) => bm.mask[t.r - 1][t.c - 1]));
-  const strawhat = generateBoard(pool, "easy", 13, { mapMode: "rolling", mask: "strawhat" });
-  const strawhatPositions = new Set(strawhat.tiles.map((t) => t.r + "," + t.c));
-  rollRight(strawhat);
-  const rolledStrawhatPositions = new Set(strawhat.tiles.map((t) => t.r + "," + t.c));
-  check(
-    "밀짚모자 실루엣 롤링: 유효 칸 위 유지·좌표 순열 보존",
-    strawhat.tiles.filter((t) => !t.removed).every((t) => strawhat.mask[t.r - 1][t.c - 1]) &&
-      rolledStrawhatPositions.size === strawhatPositions.size &&
-      [...strawhatPositions].every((position) => rolledStrawhatPositions.has(position))
-  );
+  for (const [mask, label, seed] of [
+    ["strawhat", "밀짚모자", 13],
+    ["laboon", "라분", 14],
+    ["magikarp", "잉어킹", 15],
+  ] as const) {
+    const silhouette = generateBoard(pool, "easy", seed, { mapMode: "rolling", mask });
+    const boundary = exteriorBoundaryKeys(silhouette);
+    const silhouetteRing = borderRingCells(silhouette);
+    const ringKeys = silhouetteRing.map((p) => cellKey(p.r, p.c));
+    const ringSet = new Set(ringKeys);
+    check(`${label} 링: 모든 셀이 exterior 인접 boundary`, ringKeys.every((key) => boundary.has(key)));
+    check(
+      `${label} 링: boundary 전체를 중복 없이 순회`,
+      ringKeys.length === ringSet.size && ringSet.size === boundary.size && [...boundary].every((key) => ringSet.has(key))
+    );
+
+    const before = new Map(silhouette.tiles.map((tile) => [tile.tileId, { r: tile.r, c: tile.c, matchKey: tile.matchKey }]));
+    const positionsBefore = new Set(silhouette.tiles.map((tile) => cellKey(tile.r, tile.c)));
+    const matchKeysBefore = countBy(silhouette.tiles.filter((tile) => !tile.removed), (tile) => tile.matchKey);
+    rollRight(silhouette);
+    const positionsAfter = new Set(silhouette.tiles.map((tile) => cellKey(tile.r, tile.c)));
+    const matchKeysAfter = countBy(silhouette.tiles.filter((tile) => !tile.removed), (tile) => tile.matchKey);
+    check(
+      `${label} 롤링: 유효 칸·좌표 순열·matchKey 짝수 보존`,
+      silhouette.tiles.filter((tile) => !tile.removed).every((tile) => silhouette.mask[tile.r - 1]?.[tile.c - 1]) &&
+        positionsAfter.size === positionsBefore.size && [...positionsBefore].every((key) => positionsAfter.has(key)) &&
+        [...matchKeysAfter.values()].every((count) => count % 2 === 0) &&
+        JSON.stringify([...matchKeysAfter].sort()) === JSON.stringify([...matchKeysBefore].sort())
+    );
+    check(
+      `${label} 롤링: 내부 타일 고정`,
+      silhouette.tiles.every((tile) => {
+        const prev = before.get(tile.tileId)!;
+        return boundary.has(cellKey(prev.r, prev.c)) || (tile.r === prev.r && tile.c === prev.c);
+      })
+    );
+  }
 }
 
 // ── 4) UP: 타이머 상승(upRise)·초기 하단 배치·reserve 감소 ────

@@ -31,6 +31,7 @@ const ERR_LABELS: Record<ErrCode, string> = {
   badVisibility: "err.badVisibility",
   badMaxPlayers: "err.badMaxPlayers",
   passwordRequired: "err.passwordRequired",
+  modeDisabled: "err.modeDisabled",
   unknownGame: "err.unknownGame",
   unknownMapMode: "err.unknownMapMode",
   unknownDifficulty: "err.unknownDifficulty",

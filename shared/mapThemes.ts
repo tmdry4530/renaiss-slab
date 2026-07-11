@@ -26,7 +26,7 @@ export const MAP_THEMES: Record<string, MapThemeDef> = {
   zeus: { mask: "zeus" }, // 제우스(상하이) — 나미의 뇌운 호미
   unown: { mask: "unown" }, // 안농(일반) — 물음표 폼 실루엣
   laboon: { mask: "laboon" }, // 라분(롤링) — 고래+꼬리 실루엣
-  "navy-road": { mask: "rect" }, // 해군로(UP) — rect 강제, 해군 네이비 톤
+  "navy-road": { mask: "rect" }, // 해군 (UP) — rect 강제, 해군 네이비 톤
 };
 
 /** theme 키로 강제 마스크를 조회 (미지정/알 수 없는 키는 undefined → 호출측이 기존 랜덤/기본 로직 사용) */

@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { DIFFICULTIES } from "../shared/board.ts";
 import { MAP_THEMES } from "../shared/mapThemes.ts";
 import {
+  DISABLED_MAP_MODES,
   MAP_MODES,
   type Ack,
   type ErrCode,
@@ -163,6 +164,7 @@ export class RoomManager {
     if (!game) return "unknownGame";
     const mapMode = MODE_KEYS.find((m) => m === b.mapMode);
     if (!mapMode) return "unknownMapMode";
+    if (DISABLED_MAP_MODES.includes(mapMode)) return "modeDisabled";
     const difficulty = DIFF_KEYS.find((d) => d === b.difficulty);
     if (!difficulty) return "unknownDifficulty";
     let theme: string | undefined;
@@ -387,6 +389,7 @@ export class RoomManager {
     if (p.mapMode !== undefined) {
       const mode = MODE_KEYS.find((m) => m === p.mapMode);
       if (!mode) return { ok: false, error: "unknownMapMode" };
+      if (DISABLED_MAP_MODES.includes(mode)) return { ok: false, error: "modeDisabled" };
       room.config.mapMode = mode;
     }
     if (p.difficulty !== undefined) {

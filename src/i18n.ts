@@ -91,7 +91,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "map.preset.sudowoodo": "꼬지모",
     "map.preset.unown": "안농",
     "map.preset.laboon": "라분",
-    "map.preset.navy-road": "해군로",
+    "map.preset.navy-road": "해군",
 
     "label.game.pokemon": "포켓몬",
     "label.game.one-piece": "원피스",
@@ -254,6 +254,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "err.passwordRequired": "비공개 방에는 비밀번호가 필요합니다",
     "err.unknownGame": "알 수 없는 카드 세트입니다",
     "err.unknownMapMode": "알 수 없는 맵 모드입니다",
+    "err.modeDisabled": "현재 비활성화된 모드입니다",
     "err.unknownDifficulty": "알 수 없는 난이도입니다",
     "err.unknownTheme": "알 수 없는 맵 테마입니다",
     "err.notInRoom": "방에 입장한 상태가 아닙니다",
@@ -372,7 +373,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "map.preset.sudowoodo": "Sudowoodo",
     "map.preset.unown": "Unown",
     "map.preset.laboon": "Laboon",
-    "map.preset.navy-road": "Marine Road",
+    "map.preset.navy-road": "Marine",
 
     "label.game.pokemon": "Pokémon",
     "label.game.one-piece": "One Piece",
@@ -535,6 +536,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "err.passwordRequired": "Private rooms require a password",
     "err.unknownGame": "Unknown card set",
     "err.unknownMapMode": "Unknown map mode",
+    "err.modeDisabled": "This mode is currently disabled",
     "err.unknownDifficulty": "Unknown difficulty",
     "err.unknownTheme": "Unknown map theme",
     "err.notInRoom": "You are not in a room",

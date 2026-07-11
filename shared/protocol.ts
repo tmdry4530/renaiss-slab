@@ -5,6 +5,8 @@
 import type { GameCard } from "./cards.ts";
 
 export type MapMode = "normal" | "rolling" | "up" | "victory" | "shanghai";
+// 임시 비활성화: 실루엣 미지원 및 회의 피드백 반영. 배열에서 제거하면 UI·서버 게이트가 함께 해제된다.
+export const DISABLED_MAP_MODES: MapMode[] = ["up"];
 export type DifficultyKey = "easy" | "normal" | "hard";
 export type GameSel = "pokemon" | "one-piece";
 export type RoomState = "waiting" | "playing" | "finishing" | "ended";
@@ -19,6 +21,7 @@ export type ItemType = "search" | "shuffle" | "scissor";
  * - badNickname/helloRequired: 로비 세션 검증 실패
  * - badRoomName/badVisibility/badMaxPlayers/passwordRequired: 방 생성 설정 검증 실패
  * - unknownGame/unknownMapMode/unknownDifficulty/unknownTheme: 게임·맵 설정 값 검증 실패
+ * - modeDisabled: 임시 비활성화된 맵 모드 선택
  * - boardGenerationFailed/gameStartFailed: 매치 생성·시작 실패
  * - cardNotFound: 카드 조회 실패
  * - notPlaying/notStarted/alreadyCleared/stuck: 매치 조작 가능 상태가 아님
@@ -44,6 +47,7 @@ export type ErrCode =
   | "passwordRequired"
   | "unknownGame"
   | "unknownMapMode"
+  | "modeDisabled"
   | "unknownDifficulty"
   | "unknownTheme"
   | "notInRoom"

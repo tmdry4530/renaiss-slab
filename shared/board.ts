@@ -1324,51 +1324,101 @@ export function upRise(board: Board): "ok" | "blocked" | "empty" {
 }
 
 // ── 롤링 모드 ────────────────────────────────────────────────
-/**
- * layer 0 마스크 활성 영역의 바운딩 박스 테두리 한 겹을 시계방향 순서로 반환.
- * 순서: 좌상단 → top행 우로 → 우측열 아래로 → bottom행 좌로 → 좌측열 위로.
- * 바운딩 박스 경계 위이면서 실제 유효(마스크 true) 칸만 포함한다(마름모 등 비사각형 방어).
- * 링 크기 1(단일 행/열)도 안전하게 처리.
- */
+/** layer 0 마스크의 외부 윤곽 한 겹을 시계방향 Moore 컨투어 순서로 반환. */
 export function borderRingCells(board: Board): Point[] {
-  let minR = Infinity,
-    maxR = -Infinity,
-    minC = Infinity,
-    maxC = -Infinity;
-  for (let r = 0; r < board.mask.length; r++)
-    for (let c = 0; c < board.mask[r].length; c++)
-      if (board.mask[r][c]) {
-        const rr = r + 1,
-          cc = c + 1;
-        if (rr < minR) minR = rr;
-        if (rr > maxR) maxR = rr;
-        if (cc < minC) minC = cc;
-        if (cc > maxC) maxC = cc;
-      }
-  if (!isFinite(minR)) return [];
-  const valid = (r: number, c: number) =>
-    r >= 1 && r <= board.rows && c >= 1 && c <= board.cols && board.mask[r - 1][c - 1];
-  const ring: Point[] = [];
-  const seen = new Set<string>();
-  const push = (r: number, c: number) => {
-    if (!valid(r, c)) return;
-    const k = r + "," + c;
-    if (seen.has(k)) return;
-    seen.add(k);
-    ring.push({ r, c });
+  const exterior = Array.from({ length: board.rows }, () => Array(board.cols).fill(false));
+  const queue: Point[] = [];
+  const enqueueExterior = (r: number, c: number) => {
+    if (r < 0 || r >= board.rows || c < 0 || c >= board.cols) return;
+    if (board.mask[r][c] || exterior[r][c]) return;
+    exterior[r][c] = true;
+    queue.push({ r, c });
   };
-  if (minR === maxR) {
-    for (let c = minC; c <= maxC; c++) push(minR, c); // 단일 행: 좌→우
-    return ring;
+  for (let r = 0; r < board.rows; r++) {
+    enqueueExterior(r, 0);
+    enqueueExterior(r, board.cols - 1);
   }
-  if (minC === maxC) {
-    for (let r = minR; r <= maxR; r++) push(r, minC); // 단일 열: 상→하
-    return ring;
+  for (let c = 0; c < board.cols; c++) {
+    enqueueExterior(0, c);
+    enqueueExterior(board.rows - 1, c);
   }
-  for (let c = minC; c <= maxC; c++) push(minR, c); // top: 좌→우
-  for (let r = minR + 1; r <= maxR; r++) push(r, maxC); // right: 상→하
-  for (let c = maxC - 1; c >= minC; c--) push(maxR, c); // bottom: 우→좌
-  for (let r = maxR - 1; r >= minR + 1; r--) push(r, minC); // left: 하→상
+  for (let i = 0; i < queue.length; i++) {
+    const cell = queue[i];
+    for (const [dr, dc] of ORTHO) enqueueExterior(cell.r + dr, cell.c + dc);
+  }
+
+  const key = (r: number, c: number) => r + "," + c;
+  const boundary = new Set<string>();
+  for (let r = 0; r < board.rows; r++) {
+    for (let c = 0; c < board.cols; c++) {
+      if (!board.mask[r][c]) continue;
+      const touchesExterior = ORTHO.some(([dr, dc]) => {
+        const nr = r + dr;
+        const nc = c + dc;
+        return nr < 0 || nr >= board.rows || nc < 0 || nc >= board.cols || exterior[nr][nc];
+      });
+      if (touchesExterior) boundary.add(key(r, c));
+    }
+  }
+  if (boundary.size === 0) return [];
+
+  // N부터 시계방향. 시작 셀의 backtrack을 서쪽에 두면 직사각형은 기존과 같이 top행 좌→우로 시작한다.
+  const MOORE: readonly (readonly [number, number])[] = [
+    [-1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [1, -1],
+    [0, -1],
+    [-1, -1],
+  ];
+  const orderedBoundary = [...boundary]
+    .map((cellKey) => {
+      const [r, c] = cellKey.split(",").map(Number);
+      return { r, c };
+    })
+    .sort((a, b) => a.r - b.r || a.c - b.c);
+  const ring: Point[] = [];
+  const visited = new Set<string>();
+
+  // 1칸 폭 부속에서는 같은 셀을 반대 방향으로 다시 밟을 수 있다. 상태(셀+진입 기준)가 반복될 때까지
+  // 추적하되 반환 배열에는 첫 방문만 넣는다. 드문 분리 윤곽도 행·열 순으로 이어 붙여 모든 boundary를 보존한다.
+  for (const componentStart of orderedBoundary) {
+    if (visited.has(key(componentStart.r, componentStart.c))) continue;
+    let current = componentStart;
+    let backtrack = { r: current.r, c: current.c - 1 };
+    const tracedStates = new Set<string>();
+    for (;;) {
+      const stateKey = `${current.r},${current.c}|${backtrack.r},${backtrack.c}`;
+      if (tracedStates.has(stateKey)) break;
+      tracedStates.add(stateKey);
+      const currentKey = key(current.r, current.c);
+      if (!visited.has(currentKey)) {
+        visited.add(currentKey);
+        ring.push({ r: current.r + 1, c: current.c + 1 });
+      }
+
+      const br = backtrack.r - current.r;
+      const bc = backtrack.c - current.c;
+      const backtrackIndex = MOORE.findIndex(([dr, dc]) => dr === br && dc === bc);
+      let next: Point | null = null;
+      let predecessor: Point | null = null;
+      for (let step = 1; step <= MOORE.length; step++) {
+        const nextIndex = (backtrackIndex + step + MOORE.length) % MOORE.length;
+        const [dr, dc] = MOORE[nextIndex];
+        if (!boundary.has(key(current.r + dr, current.c + dc))) continue;
+        const predecessorIndex = (nextIndex - 1 + MOORE.length) % MOORE.length;
+        const [pr, pc] = MOORE[predecessorIndex];
+        next = { r: current.r + dr, c: current.c + dc };
+        predecessor = { r: current.r + pr, c: current.c + pc };
+        break;
+      }
+      if (!next || !predecessor) break;
+      current = next;
+      backtrack = predecessor;
+    }
+  }
   return ring;
 }
 
