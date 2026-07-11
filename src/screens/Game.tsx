@@ -28,7 +28,7 @@ import {
 } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
 import { errText, modeLabel } from "../labels.ts";
-import { hasRealPrice } from "../ui.tsx";
+import { CardImg, hasRealPrice } from "../ui.tsx";
 import { findPath } from "../../shared/shisen.ts";
 import { audio } from "../audio.ts";
 import { t } from "../i18n.ts";
@@ -131,6 +131,7 @@ function useViewport() {
 interface TileProps {
   tileId: number;
   imgSrc: string;
+  imgFull: string; // 썸네일 실패 시 폴백용 원본 URL (CardImg 체인)
   alt: string;
   victory: boolean;
   left: number;
@@ -179,7 +180,7 @@ const Tile = memo(function Tile(p: TileProps) {
       {p.victory ? (
         <span className="victory-face" style={{ fontSize: p.faceFont }}>{p.victoryFace}</span>
       ) : (
-        <img src={p.imgSrc} alt={p.alt} draggable={false} decoding="async" />
+        <CardImg thumb={p.imgSrc} full={p.imgFull} alt={p.alt} label={p.alt} />
       )}
       {p.victory && <span className="crown">👑</span>}
     </button>
@@ -222,6 +223,7 @@ const Board = memo(function Board(p: BoardProps) {
             key={t.tileId}
             tileId={t.tileId}
             imgSrc={card.imageUrlThumb || card.imageUrl}
+            imgFull={card.imageUrl}
             alt={card.name}
             victory={!!t.victory}
             left={(t.c - 1) * cellW}

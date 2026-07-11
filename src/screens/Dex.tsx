@@ -11,7 +11,7 @@ import {
 } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
 import { errText, gameLabel } from "../labels.ts";
-import { hasRealPrice } from "../ui.tsx";
+import { CardImg, hasRealPrice } from "../ui.tsx";
 import { t, useLang } from "../i18n.ts";
 
 type Tab = "pokemon" | "one-piece";
@@ -338,7 +338,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
                 title={st === "unk" ? t("dex.undiscoveredCard") : c.name}
               >
                 <div className="dex-thumb">
-                  <img src={c.imageUrlThumb || c.imageUrl} alt={st === "unk" ? t("dex.undiscovered") : c.name} loading="lazy" />
+                  <CardImg thumb={c.imageUrlThumb || c.imageUrl} full={c.imageUrl} alt={st === "unk" ? t("dex.undiscovered") : c.name} label={c.name} lazy />
                   {st === "unk" && <span className="dex-q">?</span>}
                   {st === "prog" && (
                     <span className="dex-progress-badge">{e!.count}/{DEX_REGISTER_COUNT}</span>
