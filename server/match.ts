@@ -341,20 +341,20 @@ export class Match {
     const st = this.guard(playerId, ack);
     if (!st) return;
     if (!st.pendingPower) {
-      ack({ ok: false, error: "발동 대기 중인 콤보 파워가 없습니다" });
+      ack({ ok: false, error: "noPower" });
       return;
     }
     const cardId = p?.cardId ?? "";
     // 승리 "승" 카드는 콤보 파워 대상에서 제외 — 경로 매칭으로만 승리하도록(플레이 피드백).
     // 파워는 유지되어 다른 카드를 다시 지정할 수 있다.
     if (cardId === "__victory__") {
-      ack({ ok: false, error: "승리 카드는 콤보 파워로 제거할 수 없습니다" });
+      ack({ ok: false, error: "victoryComboForbidden" });
       return;
     }
     const removedIds = applyComboPower(st.board, cardId, st.pendingPower.kind);
     if (removedIds.length === 0) {
       // 대상이 없으면 파워는 유지 — 다른 카드를 다시 지정할 수 있다
-      ack({ ok: false, error: "제거할 대상이 없습니다" });
+      ack({ ok: false, error: "noTarget" });
       return;
     }
     st.pendingPower = null;
@@ -386,18 +386,18 @@ export class Match {
       const cur = this.states.get(playerId);
       ack({
         ok: false,
-        error: "지금은 아이템을 사용할 수 없습니다",
+        error: "itemUnavailable",
         ...(cur ? { data: { items: { ...cur.items } } } : {}),
       });
       return;
     }
     const type = p?.type;
     if (type !== "search" && type !== "shuffle" && type !== "scissor") {
-      ack({ ok: false, error: "알 수 없는 아이템입니다", data: { items: { ...st.items } } });
+      ack({ ok: false, error: "unknownItem", data: { items: { ...st.items } } });
       return;
     }
     if (st.items[type] <= 0) {
-      ack({ ok: false, error: "아이템을 모두 사용했습니다", data: { items: { ...st.items } } });
+      ack({ ok: false, error: "noQuota", data: { items: { ...st.items } } });
       return;
     }
 
@@ -406,7 +406,7 @@ export class Match {
       // 제거할 짝이 없으면 미소모(소모 판정을 탐색 뒤로) → 잔량 그대로 반환해 클라 낙관적 차감 복구.
       const pair = this.findSearchPair(st.board);
       if (!pair) {
-        ack({ ok: false, error: "매칭 가능한 짝이 없습니다", data: { items: { ...st.items } } });
+        ack({ ok: false, error: "noMatch", data: { items: { ...st.items } } });
         return;
       }
       st.items.search--;
@@ -443,22 +443,22 @@ export class Match {
     // 무효/승리 대상은 소모하지 않고 잔량 그대로 반환 → 클라 낙관적 차감이 복구된다.
     const tiles = p?.tiles;
     if (!Array.isArray(tiles) || tiles.length !== 2) {
-      ack({ ok: false, error: "가위 대상 두 타일을 지정하세요", data: { items: { ...st.items } } });
+      ack({ ok: false, error: "badScissorTarget", data: { items: { ...st.items } } });
       return;
     }
     const a = st.board.tiles.find((t) => t.tileId === tiles[0]);
     const b = st.board.tiles.find((t) => t.tileId === tiles[1]);
     if (!a || !b || a === b || a.removed || b.removed) {
-      ack({ ok: false, error: "대상 타일이 유효하지 않습니다", data: { items: { ...st.items } } });
+      ack({ ok: false, error: "invalidTiles", data: { items: { ...st.items } } });
       return;
     }
     if (a.matchKey !== b.matchKey) {
-      ack({ ok: false, error: "같은 카드만 제거할 수 있습니다", data: { items: { ...st.items } } });
+      ack({ ok: false, error: "mismatch", data: { items: { ...st.items } } });
       return;
     }
     // 승리 "승" 카드는 가위 대상에서 제외 — 경로 매칭으로만 승리하도록(플레이 피드백).
     if (a.victory || b.victory) {
-      ack({ ok: false, error: "승리 카드는 가위로 제거할 수 없습니다", data: { items: { ...st.items } } });
+      ack({ ok: false, error: "victoryScissorForbidden", data: { items: { ...st.items } } });
       return;
     }
     st.items.scissor--;
@@ -473,20 +473,20 @@ export class Match {
   private guard<T>(playerId: string, ack?: (r: Ack<T>) => void): PState | null {
     const st = this.states.get(playerId);
     if (!st || this.ended) {
-      ack?.({ ok: false, error: "진행 중인 매치가 없습니다" });
+      ack?.({ ok: false, error: "notPlaying" });
       return null;
     }
     if (!this.active) {
       // 카운트다운(3→2→1) 진행 중 — board:init 은 왔지만 GO(beginPlay) 전이라 아직 조작 불가
-      ack?.({ ok: false, error: "아직 시작되지 않았습니다" });
+      ack?.({ ok: false, error: "notStarted" });
       return null;
     }
     if (st.cleared) {
-      ack?.({ ok: false, error: "이미 클리어했습니다" });
+      ack?.({ ok: false, error: "alreadyCleared" });
       return null;
     }
     if (st.stuck) {
-      ack?.({ ok: false, error: "더 진행할 수 없습니다" });
+      ack?.({ ok: false, error: "stuck" });
       return null;
     }
     return st;

@@ -10,6 +10,70 @@ export type GameSel = "pokemon" | "one-piece";
 export type RoomState = "waiting" | "playing" | "finishing" | "ended";
 export type ItemType = "search" | "shuffle" | "scissor";
 
+/**
+ * 서버 Ack/REST 실패 코드. 사용자 노출 문구는 클라이언트 i18n 사전에서 결정한다.
+ *
+ * - routeNotFound: 존재하지 않는 REST 경로
+ * - notFound/full/playing/badPassword: 방 조회·입장 실패
+ * - notHost/notInRoom: 방 권한·소속 실패
+ * - badNickname/helloRequired: 로비 세션 검증 실패
+ * - badRoomName/badVisibility/badMaxPlayers/passwordRequired: 방 생성 설정 검증 실패
+ * - unknownGame/unknownMapMode/unknownDifficulty/unknownTheme: 게임·맵 설정 값 검증 실패
+ * - boardGenerationFailed/gameStartFailed: 매치 생성·시작 실패
+ * - cardNotFound: 카드 조회 실패
+ * - notPlaying/notStarted/alreadyCleared/stuck: 매치 조작 가능 상태가 아님
+ * - noPower/victoryComboForbidden/noTarget: 콤보 파워 적용 실패
+ * - itemUnavailable/unknownItem/noQuota/noMatch: 아이템 사용 실패
+ * - badScissorTarget/invalidTiles/mismatch/victoryScissorForbidden: 가위 대상 검증 실패
+ * - removed/sameTile/locked/noPath: 일반 타일 매칭 검증 실패
+ * - unknownCategory/notComplete/alreadyClaimed: 도감 SBT 발급 실패
+ * - timeout: 클라이언트가 합성하는 Ack 응답 시간 초과
+ */
+export type ErrCode =
+  | "routeNotFound"
+  | "notFound"
+  | "full"
+  | "playing"
+  | "badPassword"
+  | "notHost"
+  | "badNickname"
+  | "helloRequired"
+  | "badRoomName"
+  | "badVisibility"
+  | "badMaxPlayers"
+  | "passwordRequired"
+  | "unknownGame"
+  | "unknownMapMode"
+  | "unknownDifficulty"
+  | "unknownTheme"
+  | "notInRoom"
+  | "boardGenerationFailed"
+  | "gameStartFailed"
+  | "cardNotFound"
+  | "notPlaying"
+  | "notStarted"
+  | "alreadyCleared"
+  | "stuck"
+  | "noPower"
+  | "victoryComboForbidden"
+  | "noTarget"
+  | "itemUnavailable"
+  | "unknownItem"
+  | "noQuota"
+  | "noMatch"
+  | "badScissorTarget"
+  | "invalidTiles"
+  | "mismatch"
+  | "victoryScissorForbidden"
+  | "removed"
+  | "sameTile"
+  | "locked"
+  | "noPath"
+  | "unknownCategory"
+  | "notComplete"
+  | "alreadyClaimed"
+  | "timeout";
+
 export const MAP_MODES: { key: MapMode; label: string; desc: string }[] = [
   { key: "normal", label: "일반", desc: "기본 매칭 규칙" },
   { key: "rolling", label: "롤링", desc: "4초마다 바깥 테두리가 시계방향으로 회전" },
@@ -167,7 +231,7 @@ export interface SbtBadge {
 // ── Socket.IO 이벤트 맵 ──────────────────────────────────────
 export interface Ack<T> {
   ok: boolean;
-  error?: string; // "notFound" | "full" | "playing" | "badPassword" | "notHost" | ...
+  error?: ErrCode;
   data?: T;
 }
 

@@ -11,6 +11,7 @@ import { MAP_THEMES } from "../shared/mapThemes.ts";
 import {
   MAP_MODES,
   type Ack,
+  type ErrCode,
   type PlayerPublic,
   type ResumeState,
   type RoomConfig,
@@ -93,7 +94,7 @@ export class RoomManager {
    */
   helloSocket(socket: GameSocket, nickname: unknown, playerId?: unknown): Ack<{ playerId: string; resume?: ResumeState }> {
     const nick = validateNickname(nickname);
-    if (!nick) return { ok: false, error: "닉네임은 1~12자여야 합니다" };
+    if (!nick) return { ok: false, error: "badNickname" };
     // 기존 playerId 를 제시하면 그대로 재사용 (서버 재시작 후에도 도감 연속성 유지)
     const pid =
       typeof playerId === "string" && playerId.length >= 1 && playerId.length <= 64
@@ -146,29 +147,29 @@ export class RoomManager {
 
   // ── 방 생성/목록/입장 ──────────────────────────────────────
 
-  /** RoomConfig 검증 — 실패 시 에러 메시지(한국어) 반환 */
-  private sanitizeConfig(body: unknown): RoomConfig | string {
+  /** RoomConfig 검증 — 실패 시 에러 코드 반환 */
+  private sanitizeConfig(body: unknown): RoomConfig | ErrCode {
     const b = (body ?? {}) as Record<string, unknown>;
     const name = typeof b.name === "string" ? b.name.trim() : "";
-    if (name.length < 1 || name.length > 24) return "방 이름은 1~24자여야 합니다";
+    if (name.length < 1 || name.length > 24) return "badRoomName";
     const visibility = b.visibility === "private" ? "private" : b.visibility === "public" ? "public" : null;
-    if (!visibility) return "공개 여부(visibility)가 잘못되었습니다";
+    if (!visibility) return "badVisibility";
     const maxPlayers = Number(b.maxPlayers);
     if (!Number.isInteger(maxPlayers) || maxPlayers < 1 || maxPlayers > 4)
-      return "최대 인원은 1~4명이어야 합니다";
+      return "badMaxPlayers";
     const password = typeof b.password === "string" && b.password.length > 0 ? b.password : undefined;
-    if (visibility === "private" && !password) return "비공개 방은 비밀번호가 필수입니다";
+    if (visibility === "private" && !password) return "passwordRequired";
     const game = GAME_SELS.find((g) => g === b.game);
-    if (!game) return "알 수 없는 카드 세트입니다";
+    if (!game) return "unknownGame";
     const mapMode = MODE_KEYS.find((m) => m === b.mapMode);
-    if (!mapMode) return "알 수 없는 맵 모드입니다";
+    if (!mapMode) return "unknownMapMode";
     const difficulty = DIFF_KEYS.find((d) => d === b.difficulty);
-    if (!difficulty) return "알 수 없는 난이도입니다";
+    if (!difficulty) return "unknownDifficulty";
     let theme: string | undefined;
     if (b.theme !== undefined) {
       // hasOwnProperty 로 검사 — "in" 은 "constructor" 등 프로토타입 키를 통과시킨다.
       if (typeof b.theme !== "string" || !Object.prototype.hasOwnProperty.call(MAP_THEMES, b.theme))
-        return "알 수 없는 맵 테마입니다";
+        return "unknownTheme";
       theme = b.theme;
     }
     return {
@@ -211,7 +212,7 @@ export class RoomManager {
   /** room:create (소켓 경유) — 생성자가 방장 */
   createSocket(socket: GameSocket, body: unknown): Ack<{ room: RoomDetail }> {
     const pid = socket.data.playerId;
-    if (!pid) return { ok: false, error: "먼저 lobby:hello 를 보내세요" };
+    if (!pid) return { ok: false, error: "helloRequired" };
     const cfg = this.sanitizeConfig(body);
     if (typeof cfg === "string") return { ok: false, error: cfg };
     this.leaveSocket(socket); // 기존 방이 있으면 나가고 새 방 생성
@@ -224,7 +225,7 @@ export class RoomManager {
   restCreate(body: unknown): Ack<{ room: RoomDetail }> {
     const b = (body ?? {}) as Record<string, unknown>;
     const nick = validateNickname(b.nickname ?? "게스트");
-    if (!nick) return { ok: false, error: "닉네임은 1~12자여야 합니다" };
+    if (!nick) return { ok: false, error: "badNickname" };
     const cfg = this.sanitizeConfig(body);
     if (typeof cfg === "string") return { ok: false, error: cfg };
     const pid = typeof b.playerId === "string" && b.playerId ? b.playerId : "p-" + randomUUID();
@@ -252,7 +253,7 @@ export class RoomManager {
   /** room:join — notFound/full/playing/badPassword 처리, 성공 시 socket join + 전원 room:update */
   joinSocket(socket: GameSocket, p: { roomId?: string; password?: string } | undefined): Ack<{ room: RoomDetail }> {
     const pid = socket.data.playerId;
-    if (!pid) return { ok: false, error: "먼저 lobby:hello 를 보내세요" };
+    if (!pid) return { ok: false, error: "helloRequired" };
     const room = this.rooms.get(p?.roomId ?? "");
     if (!room) return { ok: false, error: "notFound" };
 
@@ -373,30 +374,30 @@ export class RoomManager {
     patch: Partial<Pick<RoomConfig, "game" | "mapMode" | "difficulty" | "theme">> | undefined
   ): Ack<{ room: RoomDetail }> {
     const ctx = this.roomOf(socket);
-    if (!ctx) return { ok: false, error: "참가 중인 방이 없습니다" };
+    if (!ctx) return { ok: false, error: "notInRoom" };
     const { room, playerId } = ctx;
     if (room.hostId !== playerId) return { ok: false, error: "notHost" };
     if (room.state !== "waiting") return { ok: false, error: "playing" };
     const p = (patch ?? {}) as Record<string, unknown>;
     if (p.game !== undefined) {
       const game = GAME_SELS.find((g) => g === p.game);
-      if (!game) return { ok: false, error: "알 수 없는 카드 세트입니다" };
+      if (!game) return { ok: false, error: "unknownGame" };
       room.config.game = game;
     }
     if (p.mapMode !== undefined) {
       const mode = MODE_KEYS.find((m) => m === p.mapMode);
-      if (!mode) return { ok: false, error: "알 수 없는 맵 모드입니다" };
+      if (!mode) return { ok: false, error: "unknownMapMode" };
       room.config.mapMode = mode;
     }
     if (p.difficulty !== undefined) {
       const diff = DIFF_KEYS.find((d) => d === p.difficulty);
-      if (!diff) return { ok: false, error: "알 수 없는 난이도입니다" };
+      if (!diff) return { ok: false, error: "unknownDifficulty" };
       room.config.difficulty = diff;
     }
     if (p.theme !== undefined) {
       // hasOwnProperty 로 검사 — "in" 은 "constructor" 등 프로토타입 키를 통과시킨다.
       if (typeof p.theme !== "string" || !Object.prototype.hasOwnProperty.call(MAP_THEMES, p.theme))
-        return { ok: false, error: "알 수 없는 맵 테마입니다" };
+        return { ok: false, error: "unknownTheme" };
       room.config.theme = p.theme;
     }
     this.broadcastRoom(room);
@@ -406,7 +407,7 @@ export class RoomManager {
   /** game:start — 방장만, waiting 에서만. 동일 seed 보드로 매치 시작. */
   startSocket(socket: GameSocket): Ack<Record<string, never>> {
     const ctx = this.roomOf(socket);
-    if (!ctx) return { ok: false, error: "참가 중인 방이 없습니다" };
+    if (!ctx) return { ok: false, error: "notInRoom" };
     const { room, playerId } = ctx;
     if (room.hostId !== playerId) return { ok: false, error: "notHost" };
     if (room.state !== "waiting") return { ok: false, error: "playing" };
@@ -424,7 +425,7 @@ export class RoomManager {
       });
     } catch (e) {
       console.error("[rooms] 보드 생성 실패:", e);
-      return { ok: false, error: "보드 생성에 실패했습니다" };
+      return { ok: false, error: "boardGenerationFailed" };
     }
     for (const pl of room.players) pl.finishedRank = undefined;
     room.state = "playing";

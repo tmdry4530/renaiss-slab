@@ -137,13 +137,13 @@ export class DexStore {
   /** SBT 목 발급 — 카테고리 도감 완성(complete) 시에만, 중복 발급 방지 */
   claim(playerId: string, category: unknown): Ack<{ sbt: SbtBadge }> {
     if (category !== "pokemon" && category !== "one-piece")
-      return { ok: false, error: "알 수 없는 카테고리입니다" };
+      return { ok: false, error: "unknownCategory" };
     const progress = this.progressFor(playerId);
     if (!progress[category].complete)
-      return { ok: false, error: "도감이 아직 완성되지 않았습니다" };
+      return { ok: false, error: "notComplete" };
     const list = this.sbts.get(playerId) ?? [];
     if (list.some((s) => s.category === category))
-      return { ok: false, error: "이미 발급된 배지입니다" };
+      return { ok: false, error: "alreadyClaimed" };
     const sbt: SbtBadge = { category, issuedAt: new Date().toISOString(), mock: true };
     list.push(sbt);
     this.sbts.set(playerId, list);

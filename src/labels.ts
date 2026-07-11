@@ -1,5 +1,6 @@
 import {
   type DifficultyKey,
+  type ErrCode,
   type GameSel,
   type MapMode,
   type RoomState,
@@ -17,31 +18,56 @@ export const diffLabel = (d: DifficultyKey): string => t(`label.diff.${d}`);
 export const stateLabel = (s: RoomState): string => t(`label.state.${s}`);
 
 // 서버 Ack.error → 사용자 문구
-const ERR_LABELS: Record<string, string> = {
-  notFound: "error.notFound",
-  full: "error.full",
-  playing: "error.playing",
-  badPassword: "error.badPassword",
-  notHost: "error.notHost",
-  badNickname: "error.badNickname",
-  badRequest: "error.badRequest",
-  notInRoom: "error.notInRoom",
-  notPlaying: "error.notPlaying",
-  quota: "error.quota",
-  noQuota: "error.noQuota",
-  noPower: "error.noPower",
-  notComplete: "error.notComplete",
-  alreadyClaimed: "error.alreadyClaimed",
-  timeout: "error.timeout",
+const ERR_LABELS: Record<ErrCode, string> = {
+  routeNotFound: "err.routeNotFound",
+  notFound: "err.notFound",
+  full: "err.full",
+  playing: "err.playing",
+  badPassword: "err.badPassword",
+  notHost: "err.notHost",
+  badNickname: "err.badNickname",
+  helloRequired: "err.helloRequired",
+  badRoomName: "err.badRoomName",
+  badVisibility: "err.badVisibility",
+  badMaxPlayers: "err.badMaxPlayers",
+  passwordRequired: "err.passwordRequired",
+  unknownGame: "err.unknownGame",
+  unknownMapMode: "err.unknownMapMode",
+  unknownDifficulty: "err.unknownDifficulty",
+  unknownTheme: "err.unknownTheme",
+  notInRoom: "err.notInRoom",
+  boardGenerationFailed: "err.boardGenerationFailed",
+  gameStartFailed: "err.gameStartFailed",
+  cardNotFound: "err.cardNotFound",
+  notPlaying: "err.notPlaying",
+  notStarted: "err.notStarted",
+  alreadyCleared: "err.alreadyCleared",
+  stuck: "err.stuck",
+  noPower: "err.noPower",
+  victoryComboForbidden: "err.victoryComboForbidden",
+  noTarget: "err.noTarget",
+  itemUnavailable: "err.itemUnavailable",
+  unknownItem: "err.unknownItem",
+  noQuota: "err.noQuota",
+  noMatch: "err.noMatch",
+  badScissorTarget: "err.badScissorTarget",
+  invalidTiles: "err.invalidTiles",
+  mismatch: "err.mismatch",
+  victoryScissorForbidden: "err.victoryScissorForbidden",
+  removed: "err.removed",
+  sameTile: "err.sameTile",
+  locked: "err.locked",
+  noPath: "err.noPath",
+  unknownCategory: "err.unknownCategory",
+  notComplete: "err.notComplete",
+  alreadyClaimed: "err.alreadyClaimed",
+  timeout: "err.timeout",
 };
 
 export const errText = (e?: string): string => {
   if (!e) return t("error.generic");
-  if (ERR_LABELS[e]) return t(ERR_LABELS[e]);
-  // 서버 guard 가 이미 한글 안내 문구를 error 로 보낸 경우(예: match.ts stuck 가드) 그대로 노출한다.
-  // ERR_LABELS 에 없다고 "오류가 발생했습니다 (…)" 로 이중 표기하면 안내 문구가 뭉개진다.
-  if (/[가-힣]/.test(e)) return e;
-  return t("error.genericDetail", { error: e });
+  if (Object.prototype.hasOwnProperty.call(ERR_LABELS, e)) return t(ERR_LABELS[e as ErrCode]);
+  return e;
 };
 
 /** 초 → "mm:ss" */

@@ -72,7 +72,7 @@ export async function createServer(
     });
     app.setNotFoundHandler((req, reply) => {
       if (req.method === "GET" && !req.url.startsWith("/api")) return reply.sendFile("index.html");
-      return reply.code(404).send({ ok: false, error: "찾을 수 없습니다" });
+      return reply.code(404).send({ ok: false, error: "routeNotFound" });
     });
   }
 
@@ -119,7 +119,7 @@ export async function createServer(
   app.get("/api/cards/pool", async (req, reply) => {
     const q = (req.query ?? {}) as { game?: string };
     if (q.game && q.game !== "pokemon" && q.game !== "one-piece" && q.game !== "mixed")
-      return reply.code(400).send({ ok: false, error: "알 수 없는 카드 세트입니다" });
+      return reply.code(400).send({ ok: false, error: "unknownGame" });
     const game: PoolGameFilter = q.game === "pokemon" || q.game === "one-piece" ? q.game : "mixed";
     const cards = pool.cardsFor(game);
     return {
@@ -145,7 +145,7 @@ export async function createServer(
   app.get("/api/cards/:cardId/docent", async (req, reply) => {
     const { cardId } = req.params as { cardId: string };
     const card = pool.cardById(cardId);
-    if (!card) return reply.code(404).send({ ok: false, error: "카드를 찾을 수 없습니다" });
+    if (!card) return reply.code(404).send({ ok: false, error: "cardNotFound" });
     return { card, marketUrl: marketUrl(card.href) };
   });
 
@@ -167,31 +167,31 @@ export async function createServer(
         ack(mgr.startSocket(socket));
       } catch (e) {
         console.error("[server] game:start 처리 실패:", e);
-        ack({ ok: false, error: "게임 시작에 실패했습니다" });
+        ack({ ok: false, error: "gameStartFailed" });
       }
     });
 
     socket.on("tile:match", (p, ack) => {
       const ctx = mgr.matchContext(socket);
-      if (!ctx) return ack?.({ ok: false, error: "진행 중인 매치가 없습니다" });
+      if (!ctx) return ack?.({ ok: false, error: "notPlaying" });
       ctx.match.handleTileMatch(ctx.playerId, p, ack);
     });
 
     socket.on("item:use", (p, ack) => {
       const ctx = mgr.matchContext(socket);
-      if (!ctx) return ack({ ok: false, error: "진행 중인 매치가 없습니다" });
+      if (!ctx) return ack({ ok: false, error: "notPlaying" });
       ctx.match.handleItemUse(ctx.playerId, p, ack);
     });
 
     socket.on("combo:power", (p, ack) => {
       const ctx = mgr.matchContext(socket);
-      if (!ctx) return ack({ ok: false, error: "진행 중인 매치가 없습니다" });
+      if (!ctx) return ack({ ok: false, error: "notPlaying" });
       ctx.match.handleComboPower(ctx.playerId, p, ack);
     });
 
     socket.on("dex:get", (ack) => {
       const pid = socket.data.playerId;
-      if (!pid) return ack({ ok: false, error: "먼저 lobby:hello 를 보내세요" });
+      if (!pid) return ack({ ok: false, error: "helloRequired" });
       ack({
         ok: true,
         data: { entries: dex.entriesFor(pid), progress: dex.progressFor(pid), sbts: dex.sbtsFor(pid) },
@@ -200,7 +200,7 @@ export async function createServer(
 
     socket.on("sbt:claim", (p, ack) => {
       const pid = socket.data.playerId;
-      if (!pid) return ack({ ok: false, error: "먼저 lobby:hello 를 보내세요" });
+      if (!pid) return ack({ ok: false, error: "helloRequired" });
       ack(dex.claim(pid, p?.category));
     });
 

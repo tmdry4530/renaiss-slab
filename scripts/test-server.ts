@@ -199,7 +199,8 @@ async function main(): Promise<void> {
   ).then((r) => r.json())) as any;
   check("GET /api/cards/:cardId/docent", docent.card?.cardId === poolRes.cards[0].cardId && typeof docent.marketUrl === "string");
   const docent404 = await fetch(url + "/api/cards/no-such-card/docent");
-  check("docent 미존재 카드 404", docent404.status === 404);
+  const docent404Body = (await docent404.json()) as any;
+  check("docent 미존재 카드 404", docent404.status === 404 && docent404Body.error === "cardNotFound");
   const restRoom = (await fetch(url + "/api/rooms", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -211,7 +212,8 @@ async function main(): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ...baseCfg(), maxPlayers: 9 }),
   });
-  check("POST /api/rooms 인원 초과 400", restBad.status === 400);
+  const restBadBody = (await restBad.json()) as any;
+  check("POST /api/rooms 인원 초과 400", restBad.status === 400 && restBadBody.error === "badMaxPlayers");
 
   // ── 로비/방 ────────────────────────────────────────────────
   console.log("\n[로비·방]");
@@ -221,9 +223,9 @@ async function main(): Promise<void> {
   check("lobby:hello playerId 발급", h1.ok && !!h1.data?.playerId);
   c1.playerId = h1.data!.playerId;
   const hBad = await emitAck(c1.sock, "lobby:hello", { nickname: "" });
-  check("빈 닉네임 거부", !hBad.ok);
+  check("빈 닉네임 거부", !hBad.ok && hBad.error === "badNickname");
   const hLong = await emitAck(c1.sock, "lobby:hello", { nickname: "열두자를넘는아주긴닉네임임" });
-  check("13자 닉네임 거부", !hLong.ok);
+  check("13자 닉네임 거부", !hLong.ok && hLong.error === "badNickname");
   const h1b = await emitAck<{ playerId: string }>(c1.sock, "lobby:hello", {
     nickname: "슬랩왕",
     playerId: c1.playerId,
@@ -240,7 +242,7 @@ async function main(): Promise<void> {
   const roomId: string = cr.data!.room.roomId;
   check("roomId 6자리 코드", roomId.length === 6);
   const crBad = await emitAck(c1.sock, "room:create", baseCfg({ maxPlayers: 9 }));
-  check("잘못된 RoomConfig 거부(인원 9)", !crBad.ok);
+  check("잘못된 RoomConfig 거부(인원 9)", !crBad.ok && crBad.error === "badMaxPlayers");
 
   const lst = await emitAck<{ rooms: any[] }>(c2.sock, "room:list");
   const found = lst.data!.rooms.find((r) => r.roomId === roomId);
@@ -264,7 +266,7 @@ async function main(): Promise<void> {
     b1.seed === b2.seed && b1.tiles.length === b2.tiles.length && b1.tiles.length > 0 && b1.tiles.length % 2 === 0
   );
   const gsDup = await emitAck(c1.sock, "game:start");
-  check("진행 중 game:start 거부", !gsDup.ok);
+  check("진행 중 game:start 거부", !gsDup.ok && gsDup.error === "playing");
 
   // 입력 게이트: board:init 은 도착했지만 GO(카운트다운 0) 전에는 active=false → 조작 거부
   // (새 순서에서 보드가 오버레이 뒤에 미리 마운트돼도 GO 전 입력은 서버가 차단함을 검증)
@@ -278,7 +280,7 @@ async function main(): Promise<void> {
     const gateRej = await c1.waitFor<{ reason: string }>("tile:rejected");
     check("카운트다운 중(GO 전) tile:match 거부", !gateMatch.ok && typeof gateRej.reason === "string");
     const gateItem = await emitAck(c1.sock, "item:use", { type: "search" });
-    check("카운트다운 중(GO 전) item:use 거부", !gateItem.ok);
+    check("카운트다운 중(GO 전) item:use 거부", !gateItem.ok && gateItem.error === "itemUnavailable");
   }
   // GO(game:countdown 0) 대기 — 여기서부터 active=true (입력 허용)
   await c1.waitForGo();
@@ -413,7 +415,7 @@ async function main(): Promise<void> {
   {
     // 서로 다른 카드 지정 → 거부 (수량은 이미 소진이라 소진 에러가 먼저 나와도 !ok)
     const sc2 = await emitAck(c1.sock, "item:use", { type: "scissor", tiles: [scDiff![0].tileId, scDiff![1].tileId] });
-    check("가위 소진(게임당 1개) error", !sc2.ok);
+    check("가위 소진(게임당 1개) error", !sc2.ok && sc2.error === "noQuota");
   }
   // 서치 소진: 앞서 1회 사용 → 2회 추가 사용 후 4회차 거부
   // se2/se3 도 성공 시 각각 짝을 제거하고 tile:matched(+드물게 board:update 재셔플) 를 방송하므로,
@@ -423,7 +425,7 @@ async function main(): Promise<void> {
   const se3 = await emitAck(c1.sock, "item:use", { type: "search" });
   if (se3.ok) c1.drain("tile:matched");
   const se4 = await emitAck(c1.sock, "item:use", { type: "search" });
-  check("서치 소진(게임당 3개) error", se2.ok && se3.ok && !se4.ok);
+  check("서치 소진(게임당 3개) error", se2.ok && se3.ok && !se4.ok && se4.error === "noQuota");
   c1.drain("board:update");
   c1.drain("player:progress");
 
