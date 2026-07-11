@@ -915,12 +915,16 @@ export default function Game({ init, room, myId, resume }: Props) {
             <span className="ss-label">{t("game.timeLeft")}</span>
             <span className="ss-val" style={timeUrgent ? { color: "#ef4444" } : undefined}>{mm}:{ss}</span>
           </div>
-          {combo > 0 && (
-            <div className="side-combo" key={comboKey}>
-              <span className="combo">{t("game.combo", { count: combo })}</span>
-              <span className="combo-bar" style={{ animationDuration: `${COMBO_WINDOW_MS}ms` }} />
-            </div>
-          )}
+          {/* 슬롯 상시 렌더(고정 높이) — 콤보 등장/소멸 때 사이드바 높이가 출렁여
+              body 스크롤바가 깜빡이고 레이아웃이 점프하던 버그 방지 */}
+          <div className="side-combo" key={combo > 0 ? comboKey : "idle"}>
+            {combo > 0 && (
+              <>
+                <span className="combo">{t("game.combo", { count: combo })}</span>
+                <span className="combo-bar" style={{ animationDuration: `${COMBO_WINDOW_MS}ms` }} />
+              </>
+            )}
+          </div>
         </div>
 
         <div className="spacer" />

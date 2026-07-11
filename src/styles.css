@@ -51,6 +51,9 @@
   --down: #ef4444;
 }
 * { box-sizing: border-box; }
+/* 세로 스크롤바 거터 상시 예약 — 일시적 요소(콤보·배너 등)로 문서 높이가 뷰포트를 넘나들 때
+   스크롤바 등장/소멸로 가로폭이 변해 중앙정렬 콘텐츠가 좌우로 점프하던 버그 방지 */
+html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   background: var(--bg);
@@ -409,7 +412,11 @@ h2 { font-size: 16px; margin: 0; }
 @keyframes combodrain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
 .game-body { display: flex; justify-content: center; gap: 18px; align-items: flex-start; }
-.gboard { position: relative; margin: 0 auto; }
+/* overflow: clip — 이펙트(vanish scale 1.18·hover 부양·layer1 그림자)의 transform 오버플로우가
+   board-wrap(overflow:auto)의 스크롤 영역을 순간 확장해 스크롤바가 깜빡이며 레이아웃이 흔들리던
+   버그 방지. clip-margin 으로 보드 밖 26px 까지는 이펙트가 보이되 스크롤 유발은 없음
+   (Safari 는 clip-margin 미지원 → 보드 경계에서 정확히 클리핑되는 무해한 열화). */
+.gboard { position: relative; margin: 0 auto; overflow: clip; overflow-clip-margin: 26px; }
 .slot-bg {
   position: absolute; box-sizing: border-box; border-radius: 9px;
   border: 1px dashed rgba(40,48,65,0.7); background: rgba(20,25,37,0.35);
@@ -970,7 +977,9 @@ h2 { font-size: 16px; margin: 0; }
 .side-metrics { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .side-metrics .ss-val { font-size: 22px; }
 .side-stat .ss-val.green { color: var(--green); }
-.side-score .side-combo { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+/* 고정 높이 슬롯 — 콤보 유무와 무관하게 패널 높이 불변 (스크롤바 깜빡임·레이아웃 점프 방지).
+   30px = .combo(라인) + gap + .combo-bar 실측 높이 */
+.side-score .side-combo { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; min-height: 30px; }
 
 /* 아이템 카드 (F1 서치 / F2 패 섞기 / F3 가위) */
 .game-items { display: flex; flex-direction: column; gap: 8px; }
