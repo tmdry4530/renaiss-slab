@@ -21,6 +21,7 @@ export const MAP_MODES: { key: MapMode; label: string; desc: string }[] = [
 export const ROLLING_INTERVAL_MS = 4000; // PRD §4.3 (넷마블 '롤링4각' — 3→4초, 바깥 테두리 시계 회전)
 export const COMBO_WINDOW_MS = 3000; // 콤보 지속시간 3초 (플레이 피드백 반영 — 2초는 콤보 잇기 어려워)
 export const FINISH_GRACE_MS = 10000; // 1위 확정 후 10초 유예
+export const MATCH_TIME_LIMIT_MS = 180_000; // 전 모드·난이도 공통 매치 제한시간 3분
 export const DISCONNECT_GRACE_MS = 60000; // 소켓 끊김(새로고침·순단) 후 재접속 유예 60초
 export const DEX_REGISTER_COUNT = 10; // 동일 카드 누적 10회 제거 시 도감 등록
 export const ITEM_QUOTA: Record<ItemType, number> = { search: 3, shuffle: 3, scissor: 1 };
@@ -104,6 +105,7 @@ export interface BoardInit {
   mapMode: MapMode;
   difficulty: DifficultyKey;
   seed: number;
+  timeLimitMs: number;
   cards: GameCard[]; // 이 판에 등장하는 카드 (tiles[].cardIdx 참조 대상)
   tiles: TileState[];
   reserveRows?: number; // UP 모드: 남은 상승 예비 줄 수
@@ -210,7 +212,7 @@ export interface ServerToClient {
   "tile:rejected": (p: { reason: string }) => void;
   "player:progress": (p: { playerId: string; remaining: number; score: number; combo: number; stuck?: boolean }) => void;
   "match:finishing": (p: { winnerId: string; winnerNickname: string; countdownSec: number }) => void;
-  "match:ended": (p: { ranks: RankEntry[]; summaries: PlayerSummary[] }) => void;
+  "match:ended": (p: { ranks: RankEntry[]; summaries: PlayerSummary[]; timedOut: boolean }) => void;
 }
 
 // ── REST (TECH-SPEC §7.1) ────────────────────────────────────

@@ -259,7 +259,7 @@ export default function Game({ init, room, myId, resume }: Props) {
   const [score, setScore] = useState(resume?.score ?? 0);
   const [combo, setCombo] = useState(resume?.combo ?? 0);
   const [comboKey, setComboKey] = useState(0); // 콤보 바 리스타트용
-  const [seconds, setSeconds] = useState(resume ? Math.floor(resume.elapsedMs / 1000) : 0);
+  const [elapsedMs, setElapsedMs] = useState(resume?.elapsedMs ?? 0);
   const [toast, setToast] = useState<GameCard | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [items, setItems] = useState<Record<ItemType, number>>(resume ? { ...resume.items } : { ...ITEM_QUOTA });
@@ -454,17 +454,20 @@ export default function Game({ init, room, myId, resume }: Props) {
     // eslint 없음 — 마운트 시 1회 등록 (cards/myId 는 게임 동안 불변)
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 경과 시간 — 보드는 카운트다운 시작에 마운트되므로, 실제 플레이 시작(GO=game:countdown{0})
-  // 시점을 기준점으로 잡는다. GO 전엔 0 유지(서버 startedAt/랭킹과 정합).
+  // 남은 시간 — 보드는 카운트다운 시작에 마운트되므로, 실제 플레이 시작(GO=game:countdown{0})
+  // 시점을 기준점으로 잡는다. 재접속 시 서버 elapsedMs 를 기준점으로 소급해 제한시간과 정합시킨다.
   useEffect(() => {
     const sock = getSocket();
     const onGo = (p: { seconds: number }) => {
-      if (p.seconds === 0) elapsedStartRef.current = Date.now();
+      if (p.seconds === 0) {
+        elapsedStartRef.current = Date.now();
+        setElapsedMs(0);
+      }
     };
     sock.on("game:countdown", onGo);
     const id = window.setInterval(() => {
       if (elapsedStartRef.current === 0) return; // GO 전 — 0 유지
-      setSeconds(Math.floor((Date.now() - elapsedStartRef.current) / 1000));
+      setElapsedMs(Date.now() - elapsedStartRef.current);
     }, 500);
     return () => {
       sock.off("game:countdown", onGo);
@@ -683,8 +686,11 @@ export default function Game({ init, room, myId, resume }: Props) {
     }
     return s;
   }, [tiles, init.mapMode]);
-  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const ss = String(seconds % 60).padStart(2, "0");
+  const remainingMs = Math.max(0, init.timeLimitMs - elapsedMs);
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const mm = String(Math.floor(remainingSeconds / 60)).padStart(2, "0");
+  const ss = String(remainingSeconds % 60).padStart(2, "0");
+  const timeUrgent = remainingSeconds <= 30;
   const linePts = line
     ? line.map((p) => {
         const { x, y } = center(p.r, p.c);
@@ -899,8 +905,8 @@ export default function Game({ init, room, myId, resume }: Props) {
             <span className="ss-val" key={score} ><span className="score-bump">{score.toLocaleString()}</span></span>
           </div>
           <div className="side-stat">
-            <span className="ss-label">시간</span>
-            <span className="ss-val">{mm}:{ss}</span>
+            <span className="ss-label">남은 시간</span>
+            <span className="ss-val" style={timeUrgent ? { color: "#ef4444" } : undefined}>{mm}:{ss}</span>
           </div>
           {combo > 0 && (
             <div className="side-combo" key={comboKey}>
@@ -928,6 +934,24 @@ export default function Game({ init, room, myId, resume }: Props) {
           🔒 나가기
         </button>
       </aside>
+
+      {/* 마지막 10초 — 시작 카운트다운의 전역 스타일을 재사용하되 플레이 입력은 막지 않는다. */}
+      {elapsedStartRef.current !== 0 && remainingSeconds >= 1 && remainingSeconds <= 10 && (
+        <div
+          className="countdown-overlay"
+          style={{ pointerEvents: "none", background: "rgba(6,10,18,0.18)" }}
+          aria-live="assertive"
+          aria-label={`${remainingSeconds}초 남음`}
+        >
+          <div
+            key={remainingSeconds}
+            className="countdown-number"
+            style={{ color: "#ef4444", textShadow: "0 0 40px rgba(239,68,68,0.6), 0 4px 18px rgba(0,0,0,0.6)" }}
+          >
+            {remainingSeconds}
+          </div>
+        </div>
+      )}
 
       {/* 1위 확정 → 10초 유예 카운트다운 (플레이는 계속 가능) */}
       {finishing && (

@@ -245,11 +245,15 @@ export default function App() {
         }, 500);
       }
     };
-    const onEnded = (p: { ranks: RankEntry[]; summaries: PlayerSummary[] }) => {
-      // 종료음 단일화: 즉시 1개만 — 대전은 1등 여부, 혼자는 클리어 여부 (gameover+win 겹침·800ms 지연 제거)
-      const mine = p.ranks.find((r) => r.playerId === playerIdRef.current);
-      const won = p.ranks.length > 1 ? mine?.rank === 1 : !!mine?.cleared;
-      audio.playSound(won ? "win" : "lose");
+    const onEnded = (p: { ranks: RankEntry[]; summaries: PlayerSummary[]; timedOut: boolean }) => {
+      // 종료음 단일화: 시간초과는 timeup 1개, 그 외는 기존 순위 기반 승패음 1개만 재생한다.
+      if (p.timedOut) {
+        audio.playSound("timeup");
+      } else {
+        const mine = p.ranks.find((r) => r.playerId === playerIdRef.current);
+        const won = p.ranks.length > 1 ? mine?.rank === 1 : !!mine?.cleared;
+        audio.playSound(won ? "win" : "lose");
+      }
       setResult(p);
       setScreen("result");
     };

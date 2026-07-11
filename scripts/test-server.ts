@@ -337,6 +337,7 @@ async function main(): Promise<void> {
   );
   const end1 = await c1.waitFor<any>("match:ended", 5000);
   await c2.waitFor<any>("match:ended", 5000);
+  check("정상 종료: timedOut=false", end1.timedOut === false);
   check(
     "순위: c1 1위·클리어",
     end1.ranks[0].playerId === c1.playerId && end1.ranks[0].rank === 1 && end1.ranks[0].cleared === true
@@ -699,6 +700,67 @@ async function main(): Promise<void> {
 
   ra3.sock.disconnect();
   rb.sock.disconnect();
+
+  // ── 서버 권위 제한시간: 아무도 클리어하지 않은 채 만료 → 현재 점수로 강제 종료 ──
+  console.log("\n[3분 제한시간 — 단축 타이머]");
+  {
+    const timeSrv = await createServer(0, {
+      finishGraceMs: 200,
+      timeLimitMs: 800,
+      countdownStepMs: 10,
+      disconnectGraceMs: 500,
+      dexFile,
+    });
+    const timeUrl = `http://127.0.0.1:${timeSrv.port}`;
+    const t1 = new TC(timeUrl);
+    const t2 = new TC(timeUrl);
+    const th1 = await emitAck<{ playerId: string }>(t1.sock, "lobby:hello", { nickname: "타임일" });
+    const th2 = await emitAck<{ playerId: string }>(t2.sock, "lobby:hello", { nickname: "타임이" });
+    t1.playerId = th1.data!.playerId;
+    t2.playerId = th2.data!.playerId;
+    const tcr = await emitAck<{ room: any }>(
+      t1.sock,
+      "room:create",
+      baseCfg({ name: "제한시간방", maxPlayers: 2 })
+    );
+    await emitAck(t2.sock, "room:join", { roomId: tcr.data!.room.roomId });
+    const tgs = await emitAck(t1.sock, "game:start");
+    check("단축 제한시간: game:start 성공", tgs.ok);
+    const tb1 = await t1.waitFor<BoardInit>("board:init");
+    const tb2 = await t2.waitFor<BoardInit>("board:init");
+    check("board:init: 실제 timeLimitMs 전달", tb1.timeLimitMs === 800 && tb2.timeLimitMs === 800);
+    await t1.waitForGo();
+    await t2.waitForGo();
+
+    // t1만 한 쌍을 제거해 현재 점수·잔여 패에 차이를 만든 뒤, 아무도 완주하지 않고 만료를 기다린다.
+    const timeHint = findHint(t1.board!);
+    if (!timeHint) throw new Error("제한시간 테스트 로컬 보드 힌트 없음");
+    const timeMatch = await emitAck(t1.sock, "tile:match", {
+      tileA: timeHint[0].tileId,
+      tileB: timeHint[1].tileId,
+    });
+    check("단축 제한시간: 만료 전 현재 점수 생성", timeMatch.ok);
+    if (timeMatch.ok) await t1.waitFor<any>("tile:matched");
+
+    const [timeEnd1, timeEnd2] = await Promise.all([
+      t1.waitFor<any>("match:ended", 3000),
+      t2.waitFor<any>("match:ended", 3000),
+    ]);
+    check("단축 제한시간: 전원 timedOut=true 수신", timeEnd1.timedOut === true && timeEnd2.timedOut === true);
+    check(
+      "단축 제한시간: 현재 점수·잔여 패 기준 순위",
+      timeEnd1.ranks[0].playerId === t1.playerId &&
+        timeEnd1.ranks[0].score > timeEnd1.ranks[1].score &&
+        timeEnd1.ranks[0].remaining < timeEnd1.ranks[1].remaining
+    );
+    check(
+      "단축 제한시간: 전원 동일 순위 결과",
+      JSON.stringify(timeEnd1.ranks) === JSON.stringify(timeEnd2.ranks)
+    );
+    t1.sock.disconnect();
+    t2.sock.disconnect();
+    await timeSrv.close();
+  }
 
   // ── 정리 ───────────────────────────────────────────────────
   c1.sock.disconnect();

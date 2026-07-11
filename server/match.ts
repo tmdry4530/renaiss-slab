@@ -42,6 +42,7 @@ export interface MatchDeps {
   io: IO;
   dex: DexStore;
   finishGraceMs: number; // 1위 확정 후 유예 (테스트에서 짧게 주입 가능)
+  timeLimitMs: number; // GO 이후 매치 제한시간 (테스트에서 짧게 주입 가능)
   countdownStepMs: number; // 3-2-1 카운트다운 스텝 간격 (테스트에서 짧게 주입 가능)
   onEnded: () => void; // 매치 종료 후처리 (방 waiting 복귀 등 — RoomManager 담당)
 }
@@ -68,6 +69,7 @@ export class Match {
   private startedAt = Date.now(); // beginPlay(GO) 에서 재설정 (클리어 시간에 카운트다운 3초 미포함)
   private states = new Map<string, PState>();
   private rollingTimer: ReturnType<typeof setInterval> | null = null;
+  private timeLimitTimer: ReturnType<typeof setTimeout> | null = null;
   private finishTimer: ReturnType<typeof setTimeout> | null = null;
   private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private finishingAnnounced = false;
@@ -136,6 +138,7 @@ export class Match {
         mapMode: st.board.mapMode,
         difficulty: st.board.difficulty,
         seed: this.seed,
+        timeLimitMs: this.deps.timeLimitMs,
         cards: st.board.cards,
         tiles: toTileStates(st.board),
         ...(this.room.config.mapMode === "up" ? { reserveRows: st.board.reserve.length } : {}),
@@ -153,6 +156,7 @@ export class Match {
     // 클리어 시간 기준점도 여기서 설정해 카운트다운 3초가 clearTimeMs 에 섞이지 않게 한다.
     this.active = true;
     this.startedAt = Date.now();
+    this.timeLimitTimer = setTimeout(() => this.endMatch(undefined, true), this.deps.timeLimitMs);
     // GO 신호: seconds:0 = 시작! (클라가 "시작!" 연출 후 오버레이 해제)
     this.deps.io.to(this.room.roomId).emit("game:countdown", { seconds: 0 });
     // 롤링 모드: ROLLING_INTERVAL_MS 마다 각 플레이어 보드 바깥 테두리를 시계방향 회전 (GO 부터 시작)
@@ -173,10 +177,7 @@ export class Match {
 
   /** 타이머 정리 (finishing/ended/방 삭제 시) */
   dispose(): void {
-    if (this.rollingTimer) {
-      clearInterval(this.rollingTimer);
-      this.rollingTimer = null;
-    }
+    this.clearPlayTimers();
     if (this.finishTimer) {
       clearTimeout(this.finishTimer);
       this.finishTimer = null;
@@ -184,6 +185,18 @@ export class Match {
     if (this.countdownTimer) {
       clearTimeout(this.countdownTimer);
       this.countdownTimer = null;
+    }
+  }
+
+  /** GO 이후 동작하는 매치 타이머 정리 (finishing/ended/방 삭제 시 공통) */
+  private clearPlayTimers(): void {
+    if (this.rollingTimer) {
+      clearInterval(this.rollingTimer);
+      this.rollingTimer = null;
+    }
+    if (this.timeLimitTimer) {
+      clearTimeout(this.timeLimitTimer);
+      this.timeLimitTimer = null;
     }
   }
 
@@ -212,6 +225,7 @@ export class Match {
       mapMode: st.board.mapMode,
       difficulty: st.board.difficulty,
       seed: this.seed,
+      timeLimitMs: this.deps.timeLimitMs,
       cards: st.board.cards,
       tiles: toTileStates(st.board),
       ...(this.room.config.mapMode === "up" ? { reserveRows: st.board.reserve.length } : {}),
@@ -498,11 +512,8 @@ export class Match {
       if (!this.finishingAnnounced) {
         this.finishingAnnounced = true;
         this.room.state = "finishing";
-        // 롤링 등 매치 타이머는 finishing 진입 시 정리 (지시 사항)
-        if (this.rollingTimer) {
-          clearInterval(this.rollingTimer);
-          this.rollingTimer = null;
-        }
+        // 롤링·제한시간 등 GO 이후 매치 타이머는 finishing 진입 시 정리
+        this.clearPlayTimers();
         const winner = this.room.players.find((pl) => pl.playerId === playerId);
         this.deps.io.to(this.room.roomId).emit("match:finishing", {
           winnerId: playerId,
@@ -620,7 +631,7 @@ export class Match {
   }
 
   /** 매치 종료: 순위 산정(rankPlayers) + PlayerSummary 브로드캐스트. forcedWinnerId = 승리 모드 승자. */
-  private endMatch(forcedWinnerId?: string): void {
+  private endMatch(forcedWinnerId?: string, timedOut = false): void {
     if (this.ended) return;
     this.ended = true;
     this.dispose();
@@ -679,7 +690,7 @@ export class Match {
     }
 
     this.room.state = "ended";
-    this.deps.io.to(this.room.roomId).emit("match:ended", { ranks, summaries });
+    this.deps.io.to(this.room.roomId).emit("match:ended", { ranks, summaries, timedOut });
     // ended → waiting 복귀 (재플레이 가능, 인원 유지) — RoomManager 가 처리
     this.deps.onEnded();
   }

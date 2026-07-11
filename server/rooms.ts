@@ -63,6 +63,7 @@ export class RoomManager {
     private pool: PoolStore,
     private dex: DexStore,
     private finishGraceMs: number,
+    private timeLimitMs: number,
     private countdownStepMs: number,
     private disconnectGraceMs: number // 소켓 끊김 후 재접속 유예 (만료 시에만 방에서 제거)
   ) {}
@@ -417,6 +418,7 @@ export class RoomManager {
         io: this.io,
         dex: this.dex,
         finishGraceMs: this.finishGraceMs,
+        timeLimitMs: this.timeLimitMs,
         countdownStepMs: this.countdownStepMs,
         onEnded: () => this.onMatchEnded(room),
       });

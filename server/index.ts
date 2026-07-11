@@ -15,6 +15,7 @@ import {
   COUNTDOWN_STEP_MS,
   DISCONNECT_GRACE_MS,
   FINISH_GRACE_MS,
+  MATCH_TIME_LIMIT_MS,
   type ClientToServer,
   type ServerToClient,
 } from "../shared/protocol.ts";
@@ -27,6 +28,8 @@ import type { IO, SocketData } from "./types.ts";
 export interface CreateServerOpts {
   /** 테스트용: 1위 확정 후 유예 시간(ms) 주입 (기본 FINISH_GRACE_MS = 10초) */
   finishGraceMs?: number;
+  /** 테스트용: GO 이후 매치 제한시간(ms) 주입 (기본 MATCH_TIME_LIMIT_MS = 3분) */
+  timeLimitMs?: number;
   /** 테스트용: 3-2-1 카운트다운 스텝 간격(ms) 주입 (기본 COUNTDOWN_STEP_MS = 1초) */
   countdownStepMs?: number;
   /** 테스트용: 소켓 끊김 후 재접속 유예(ms) 주입 (기본 DISCONNECT_GRACE_MS = 60초) */
@@ -87,6 +90,7 @@ export async function createServer(
     pool,
     dex,
     opts.finishGraceMs ?? FINISH_GRACE_MS,
+    opts.timeLimitMs ?? MATCH_TIME_LIMIT_MS,
     opts.countdownStepMs ?? COUNTDOWN_STEP_MS,
     opts.disconnectGraceMs ?? DISCONNECT_GRACE_MS
   );
