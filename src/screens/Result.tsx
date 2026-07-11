@@ -10,6 +10,7 @@ import type {
 import { getSocket } from "../net.ts";
 import { errText, fmtMs, gameLabel } from "../labels.ts";
 import { hasRealPrice } from "../ui.tsx";
+import { t, useLang } from "../i18n.ts";
 import { avatarFor } from "./Game.tsx";
 
 interface Props {
@@ -34,6 +35,7 @@ const STAT_PLAYS_KEY = "rsk:stats:plays";
 const STAT_WINS_KEY = "rsk:stats:wins";
 
 export default function Result({ ranks, summaries, myId, canRetry, roomName, onRetry, onLobby, flash }: Props) {
+  const { lang } = useLang();
   const my = summaries.find((s) => s.playerId === myId) ?? null;
   const myRank = ranks.find((r) => r.playerId === myId) ?? null;
   const [claimed, setClaimed] = useState<SbtBadge[]>([]);
@@ -101,7 +103,7 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
       <div className="screen-center result-center">
         <div className="game-center-head">
           <h2 className="game-title">
-            {roomName ? `${roomName} — ` : ""}{myRank?.rank === 1 ? "🏆 " : ""}게임 결과
+            {roomName ? `${roomName} — ` : ""}{myRank?.rank === 1 ? "🏆 " : ""}{t("result.title")}
           </h2>
         </div>
 
@@ -109,10 +111,10 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
           <table className="rank-table result-rank">
             <thead>
               <tr>
-                <th>순위</th>
-                <th>아이디</th>
-                <th className="ta-r">남은 수량</th>
-                <th className="ta-r">점수</th>
+                <th>{t("result.rank")}</th>
+                <th>{t("result.player")}</th>
+                <th className="ta-r">{t("result.remaining")}</th>
+                <th className="ta-r">{t("game.score")}</th>
               </tr>
             </thead>
             <tbody>
@@ -121,10 +123,10 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                   <td className="rk">{medal(r.rank)}</td>
                   <td>
                     @{r.nickname}
-                    {r.playerId === myId && <span className="muted"> — 나</span>}
+                    {r.playerId === myId && <span className="muted"> — {t("game.me")}</span>}
                   </td>
-                  <td className="ta-r"><b>{r.remaining}</b>장</td>
-                  <td className="ta-r"><b>{r.score.toLocaleString()}</b>점</td>
+                  <td className="ta-r">{t("result.cards", { count: r.remaining })}</td>
+                  <td className="ta-r">{t("result.points", { score: r.score.toLocaleString() })}</td>
                 </tr>
               ))}
             </tbody>
@@ -135,44 +137,44 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
         {canRetry ? (
           <>
             <button className="btn btn-accent btn-block result-leave" onClick={onRetry}>
-              🏠 대기실로 돌아가기
+              {t("result.backToWaitingRoom")}
             </button>
             <button className="ghost btn-block result-leave" onClick={onLobby}>
-              나가기 (로비로)
+              {t("result.leaveToLobby")}
             </button>
           </>
         ) : (
           <>
             <button className="btn btn-accent btn-block result-leave" onClick={onLobby}>
-              로비로 나가기
+              {t("result.backToLobby")}
             </button>
-            <p className="muted small center">방이 닫혀 다시 하기를 할 수 없어요 — 로비에서 새 방을 만들어 주세요.</p>
+            <p className="muted small center">{t("result.roomClosed")}</p>
           </>
         )}
 
         {/* ── 기존 상세 요약(획득 XP·오늘 만난 카드·등급 분포·최고가·도감 신규/달성률·SBT) 보존 ── */}
         {my && myRank && (
           <details className="result-summary" open>
-            <summary>결과 요약</summary>
+            <summary>{t("result.summary")}</summary>
 
             <div className="panel">
-              <h3>내 결과</h3>
+              <h3>{t("result.myResult")}</h3>
               <div className="sum-cards">
                 <div className="sum-card">
-                  <span>클리어</span>
-                  <b>{myRank.cleared ? "성공 🎉" : "미완료"}</b>
+                  <span>{t("result.clear")}</span>
+                  <b>{t(myRank.cleared ? "result.success" : "result.incomplete")}</b>
                 </div>
                 <div className="sum-card">
-                  <span>점수</span>
+                  <span>{t("game.score")}</span>
                   <b>{myRank.score.toLocaleString()}</b>
                 </div>
                 <div className="sum-card">
-                  <span>소요 시간</span>
+                  <span>{t("result.time")}</span>
                   <b>{fmtMs(myRank.timeMs)}</b>
                 </div>
                 <div className="sum-card xp">
-                  <span>획득 경험치</span>
-                  <b>+{my.xp} XP</b>
+                  <span>{t("result.xp")}</span>
+                  <b>{t("result.xpAmount", { xp: my.xp })}</b>
                 </div>
               </div>
             </div>
@@ -182,10 +184,10 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                 {/* 오늘 만난 카드 */}
                 <div className="panel">
                   <h3>
-                    오늘 만난 카드 <span className="muted">({my.metCards.length}종)</span>
+                    {t("result.cardsSeen", { count: my.metCards.length })}
                   </h3>
                   {my.metCards.length === 0 ? (
-                    <p className="muted">이번 판에는 제거한 카드가 없어요.</p>
+                    <p className="muted">{t("result.noCards")}</p>
                   ) : (
                     <div className="met-grid">
                       {my.metCards.map(({ card, count }) => (
@@ -199,14 +201,14 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                         >
                           <img src={card.imageUrlThumb || card.imageUrl} alt={card.name} loading="lazy" />
                           <span className="met-count">×{count}</span>
-                          {newIds.has(card.cardId) && <span className="met-new">도감 NEW</span>}
+                          {newIds.has(card.cardId) && <span className="met-new">{t("result.dexNew")}</span>}
                         </a>
                       ))}
                     </div>
                   )}
                   {my.dexNewlyRegistered.length > 0 && (
                     <p className="dex-new-note">
-                      📖 이번 판으로 도감에 새로 등록:{" "}
+                      {t("result.newlyRegistered")}{" "}
                       <b>{my.dexNewlyRegistered.map((c) => c.name).join(", ")}</b>
                     </p>
                   )}
@@ -214,9 +216,9 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
 
                 {/* 등급 분포 */}
                 <div className="panel">
-                  <h3>등급 분포</h3>
+                  <h3>{t("result.gradeDistribution")}</h3>
                   {my.gradeDist.length === 0 ? (
-                    <p className="muted">데이터 없음</p>
+                    <p className="muted">{t("result.noData")}</p>
                   ) : (
                     <div className="grade-bars">
                       {my.gradeDist.map((g) => (
@@ -230,7 +232,7 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                       ))}
                     </div>
                   )}
-                  <p className="attribution">등급·가격 출처: Renaiss OS Index (임의 생성 없음)</p>
+                  <p className="attribution">{t("result.attribution")}</p>
                 </div>
               </div>
 
@@ -238,7 +240,7 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                 {/* 최고가 카드 */}
                 {my.topCard && (
                   <div className="panel top-card-panel">
-                    <h3>오늘 만난 최고가 카드</h3>
+                    <h3>{t("result.topCard")}</h3>
                     <div className="top-card">
                       <img src={my.topCard.imageUrl || my.topCard.imageUrlThumb} alt={my.topCard.name} />
                       <div className="top-card-info">
@@ -246,10 +248,10 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                         <span className="muted">{my.topCard.setName}</span>
                         <span className="grade">{my.topCard.gradeLabel}</span>
                         <span className="tc-price">
-                          {hasRealPrice(my.topCard) ? usd(my.topCard.priceUsdCents) : "예시 데이터"}
+                          {hasRealPrice(my.topCard) ? usd(my.topCard.priceUsdCents) : t("game.sampleData")}
                         </span>
                         <a className="d-src" href={marketUrl(my.topCard.href)} target="_blank" rel="noreferrer">
-                          Renaiss OS Index ↗
+                          {t("common.indexLink")}
                         </a>
                       </div>
                     </div>
@@ -258,7 +260,7 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
 
                 {/* 도감 달성률 + SBT 보상 */}
                 <div className="panel">
-                  <h3>도감 달성률</h3>
+                  <h3>{t("result.dexProgress")}</h3>
                   {(["pokemon", "one-piece"] as const).map((cat) => {
                     const pr = my.dexProgress[cat];
                     const pct = pr.total > 0 ? Math.round((pr.registered / pr.total) * 100) : 0;
@@ -272,10 +274,10 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                           </span>
                           {pr.complete && !hasBadge && (
                             <button className="btn primary sm" disabled={claiming !== null} onClick={() => claim(cat)}>
-                              🏅 보상 받기
+                              {t("result.claimReward")}
                             </button>
                           )}
-                          {hasBadge && <span className="sbt-badge">🏅 SBT 발급 완료</span>}
+                          {hasBadge && <span className="sbt-badge">{t("result.sbtIssued")}</span>}
                         </div>
                         <div className="gb-track big">
                           <span className={`gb-fill ${pr.complete ? "done" : ""}`} style={{ width: `${pct}%` }} />
@@ -283,14 +285,14 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
                       </div>
                     );
                   })}
-                  <p className="muted small">카테고리 도감 100% 달성 시 전용 SBT(데모: 목 발급)를 받을 수 있어요.</p>
+                  <p className="muted small">{t("result.sbtHint")}</p>
                 </div>
               </div>
             </div>
 
             <div className="result-actions big-row">
               <a className="btn" href={RENAISS_INDEX_BASE} target="_blank" rel="noreferrer">
-                🛒 마켓 구경하기
+                {t("result.market")}
               </a>
             </div>
           </details>
@@ -300,37 +302,37 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
       {/* ── 우: 사이드바(게임 레이아웃 유지용 · 종료 상태 dim) ── */}
       <aside className="side-right game-right result-right" aria-hidden="true">
         <div className="rank-box">
-          <div className="rank-label">현재 등수</div>
-          <div className="rank-value">{myRank ? `${myRank.rank}위` : "—"}</div>
+          <div className="rank-label">{t("game.currentRank")}</div>
+          <div className="rank-value">{myRank ? t("game.rank", { rank: myRank.rank }) : "—"}</div>
         </div>
         <div className="panel side-metrics">
           <div className="side-stat">
-            <span className="ss-label">남은 패</span>
+            <span className="ss-label">{t("game.tilesLeft")}</span>
             <span className="ss-val">{myRank ? myRank.remaining : 0}</span>
           </div>
           <div className="side-stat">
-            <span className="ss-label">소거가능</span>
+            <span className="ss-label">{t("game.removable")}</span>
             <span className="ss-val">0</span>
           </div>
         </div>
         <div className="game-items">
           <div className="game-item" aria-disabled="true">
-            <span className="gi-top"><span className="key-cap">F1</span> 🔍 서치</span>
-            <span className="gi-sub">종료</span>
+            <span className="gi-top"><span className="key-cap">F1</span> {t("game.search")}</span>
+            <span className="gi-sub">{t("result.ended")}</span>
           </div>
           <div className="game-item" aria-disabled="true">
-            <span className="gi-top"><span className="key-cap">F2</span> 🔀 패 섞기</span>
-            <span className="gi-sub">종료</span>
+            <span className="gi-top"><span className="key-cap">F2</span> {t("game.shuffle")}</span>
+            <span className="gi-sub">{t("result.ended")}</span>
           </div>
           <div className="game-item" aria-disabled="true">
-            <span className="gi-top"><span className="key-cap">F3</span> ✂️ 가위</span>
-            <span className="gi-sub">종료</span>
+            <span className="gi-top"><span className="key-cap">F3</span> {t("game.scissors")}</span>
+            <span className="gi-sub">{t("result.ended")}</span>
           </div>
         </div>
         <div className="spacer" />
-        <button className="btn btn-dark btn-block" disabled>옵션</button>
+        <button className="btn btn-dark btn-block" disabled>{t("game.options")}</button>
         <button className="btn btn-danger btn-block" onClick={canRetry ? onRetry : onLobby}>
-          {canRetry ? "대기실로" : "나가기"}
+          {t(canRetry ? "result.waitingRoom" : "room.leave")}
         </button>
       </aside>
 
@@ -339,12 +341,12 @@ export default function Result({ ranks, summaries, myId, canRetry, roomName, onR
         <div className="overlay sbt-overlay" onClick={() => setJustClaimed(null)}>
           <div className="sbt-pop">
             <div className="sbt-medal">🏅</div>
-            <h3>{gameLabel(justClaimed.category)} 도감 완성!</h3>
+            <h3>{t("result.dexComplete", { game: gameLabel(justClaimed.category) })}</h3>
             <p>
-              전용 SBT가 발급되었습니다
+              {t("result.exclusiveSbtIssued")}
               <br />
               <span className="muted small">
-                {new Date(justClaimed.issuedAt).toLocaleString("ko-KR")} · 데모 목 발급
+                {t("result.mockIssuedAt", { date: new Date(justClaimed.issuedAt).toLocaleString(lang === "ko" ? "ko-KR" : "en-US") })}
               </span>
             </p>
           </div>

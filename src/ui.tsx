@@ -3,6 +3,7 @@
 // 가격 표기에는 항상 "Renaiss OS Index" 출처 캡션을 유지한다. 숫자 임의 생성 금지.
 import type { GameCard } from "../shared/cards.ts";
 import { usd } from "../shared/cards.ts";
+import { t } from "./i18n.ts";
 
 /** 카드에 실가격 데이터가 있는지 (결측 시 예시 데이터 취급) */
 export const hasRealPrice = (c: GameCard): boolean =>
@@ -15,7 +16,7 @@ export function PriceLine({ card, big }: { card: GameCard; big?: boolean }) {
       {hasRealPrice(card) ? (
         <b className="px">{usd(card.priceUsdCents)}</b>
       ) : (
-        <span className="sample-tag">예시 데이터</span>
+        <span className="sample-tag">{t("game.sampleData")}</span>
       )}
       <span className="src-cap">Renaiss OS Index</span>
     </span>

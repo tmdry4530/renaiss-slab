@@ -12,6 +12,7 @@ import {
 import { getSocket } from "../net.ts";
 import { errText, gameLabel } from "../labels.ts";
 import { hasRealPrice } from "../ui.tsx";
+import { t, useLang } from "../i18n.ts";
 
 type Tab = "pokemon" | "one-piece";
 
@@ -38,6 +39,7 @@ interface Props {
 }
 
 export default function Dex({ pool, onBack, flash }: Props) {
+  const { lang } = useLang();
   const [tab, setTab] = useState<Tab>("pokemon");
   const [entries, setEntries] = useState<Record<string, DexEntry>>({});
   const [progress, setProgress] = useState<DexProgress | null>(null);
@@ -97,7 +99,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
       setClaiming(false);
       if (r.ok && r.data) {
         setSbts((s) => [...s, r.data!.sbt]);
-        flash(`🏅 ${gameLabel(category)} 도감 SBT 발급 완료!`);
+        flash(t("dex.sbtIssuedToast", { game: gameLabel(category) }));
       } else {
         flash(errText(r.error));
       }
@@ -114,8 +116,8 @@ export default function Dex({ pool, onBack, flash }: Props) {
   return (
     <section className="dex-screen">
       <div className="panel-head">
-        <h2>카드 도감</h2>
-        <button className="ghost" onClick={onBack}>← 로비로</button>
+        <h2>{t("dex.title")}</h2>
+        <button className="ghost" onClick={onBack}>{t("app.backToLobby")}</button>
       </div>
 
       {/* 카테고리 탭 + 달성률 */}
@@ -151,24 +153,23 @@ export default function Dex({ pool, onBack, flash }: Props) {
       <div className="dex-sbt-row">
         {sbts.map((s) => (
           <span key={s.category} className="sbt-badge">
-            🏅 {gameLabel(s.category)} 도감 SBT
-            <span className="muted"> · {new Date(s.issuedAt).toLocaleDateString("ko-KR")}{s.mock ? " (목 발급)" : ""}</span>
+            {t("dex.sbtBadge", { game: gameLabel(s.category) })}
+            <span className="muted"> · {new Date(s.issuedAt).toLocaleDateString(lang === "ko" ? "ko-KR" : "en-US")}{s.mock ? t("dex.mockIssue") : ""}</span>
           </span>
         ))}
         {progress?.[tab]?.complete && !sbts.some((s) => s.category === tab) && (
           <button className="btn primary sm" disabled={claiming} onClick={() => claim(tab)}>
-            🏅 {gameLabel(tab)} 도감 완성 보상 받기
+            {t("dex.claimReward", { game: gameLabel(tab) })}
           </button>
         )}
       </div>
 
       <p className="muted small">
-        동일 카드를 누적 {DEX_REGISTER_COUNT}회 제거하면 도감에 등록됩니다. 등급·가격은 Renaiss OS
-        Index 실데이터 기준이며, 미확보 항목은 "예시 데이터"로 표기합니다.
+        {t("dex.hint", { count: DEX_REGISTER_COUNT })}
       </p>
 
-      {!pool && <p className="muted">카드 풀을 불러오는 중…</p>}
-      {pool && !loaded && <p className="muted">도감 데이터를 불러오는 중…</p>}
+      {!pool && <p className="muted">{t("dex.poolLoading")}</p>}
+      {pool && !loaded && <p className="muted">{t("dex.dataLoading")}</p>}
 
       {/* 상세 패널 — 이미지 우측 배치 */}
       {selectedCard && (
@@ -183,20 +184,18 @@ export default function Dex({ pool, onBack, flash }: Props) {
               {hasRealPrice(selectedCard) ? (
                 <b className="px">{usd(selectedCard.priceUsdCents)}</b>
               ) : (
-                <span className="sample-tag">예시 데이터</span>
+                <span className="sample-tag">{t("game.sampleData")}</span>
               )}
             </p>
-            <p className="attribution">출처: Renaiss OS Index</p>
+            <p className="attribution">{t("dex.source")}</p>
             <p className="muted small dd-story">
-              등급 감정(슬랩)된 실물 카드입니다. 온라인에서 구매하면 소유권이 계정에 귀속되고,
-              원하면 실물 카드로 수령할 수도 있어요. 세트({selectedCard.setName}) 단위로 모으는
-              재미도 놓치지 마세요.
+              {t("dex.story", { set: selectedCard.setName })}
             </p>
             <div className="dd-actions">
               <a className="btn primary" href={marketUrl(selectedCard.href)} target="_blank" rel="noreferrer">
-                자세히 보기 ↗
+                {t("dex.details")}
               </a>
-              <button className="ghost" onClick={() => setSelected(null)}>닫기</button>
+              <button className="ghost" onClick={() => setSelected(null)}>{t("dex.close")}</button>
             </div>
           </div>
           <div className="dd-image">
@@ -217,10 +216,10 @@ export default function Dex({ pool, onBack, flash }: Props) {
                 className={`dex-card ${st} ${selected === c.cardId ? "sel" : ""}`}
                 disabled={st === "unk"}
                 onClick={() => setSelected(selected === c.cardId ? null : c.cardId)}
-                title={st === "unk" ? "미발견 카드" : c.name}
+                title={st === "unk" ? t("dex.undiscoveredCard") : c.name}
               >
                 <div className="dex-thumb">
-                  <img src={c.imageUrlThumb || c.imageUrl} alt={st === "unk" ? "미발견" : c.name} loading="lazy" />
+                  <img src={c.imageUrlThumb || c.imageUrl} alt={st === "unk" ? t("dex.undiscovered") : c.name} loading="lazy" />
                   {st === "unk" && <span className="dex-q">?</span>}
                   {st === "prog" && (
                     <span className="dex-progress-badge">{e!.count}/{DEX_REGISTER_COUNT}</span>
@@ -229,14 +228,14 @@ export default function Dex({ pool, onBack, flash }: Props) {
                 </div>
                 <div className="dex-meta">
                   {st === "unk" ? (
-                    <span className="muted">미발견</span>
+                    <span className="muted">{t("dex.undiscovered")}</span>
                   ) : (
                     <>
                       <span className="dex-name">{c.name}</span>
                       {st === "prog" ? (
                         <span className="dex-count">{e!.count}/{DEX_REGISTER_COUNT}</span>
                       ) : (
-                        <span className="dex-count reg">등록</span>
+                        <span className="dex-count reg">{t("dex.registered")}</span>
                       )}
                     </>
                   )}
@@ -257,7 +256,7 @@ export default function Dex({ pool, onBack, flash }: Props) {
                 disabled={pageSafe <= 1}
                 onClick={() => goToPage(pageSafe - 1)}
               >
-                ← 이전
+                {t("dex.previous")}
               </button>
               <div className="dex-page-nums">
                 {pageList(pageSafe, totalPages).map((p, i) =>
@@ -279,12 +278,12 @@ export default function Dex({ pool, onBack, flash }: Props) {
                 disabled={pageSafe >= totalPages}
                 onClick={() => goToPage(pageSafe + 1)}
               >
-                다음 →
+                {t("dex.next")}
               </button>
             </div>
           )}
           <p className="muted small dex-page-info">
-            {rangeStart}–{rangeEnd} / 총 {cards.length}장
+            {t("dex.pageInfo", { start: rangeStart, end: rangeEnd, total: cards.length })}
           </p>
         </>
       )}

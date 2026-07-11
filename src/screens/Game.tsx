@@ -31,6 +31,7 @@ import { errText, modeLabel } from "../labels.ts";
 import { hasRealPrice } from "../ui.tsx";
 import { findPath } from "../../shared/shisen.ts";
 import { audio } from "../audio.ts";
+import { t } from "../i18n.ts";
 
 interface Props {
   init: BoardInit;
@@ -143,6 +144,7 @@ interface TileProps {
   isShake: boolean;
   targeting: boolean;
   faceFont: number;
+  victoryFace: string;
   title: string;
   onClick: (id: number) => void;
 }
@@ -175,7 +177,7 @@ const Tile = memo(function Tile(p: TileProps) {
       title={p.title}
     >
       {p.victory ? (
-        <span className="victory-face" style={{ fontSize: p.faceFont }}>승</span>
+        <span className="victory-face" style={{ fontSize: p.faceFont }}>{p.victoryFace}</span>
       ) : (
         <img src={p.imgSrc} alt={p.alt} draggable={false} decoding="async" />
       )}
@@ -199,6 +201,8 @@ interface BoardProps {
   cellW: number;
   cellH: number;
   faceFont: number;
+  victoryFace: string;
+  victoryTitle: string;
   onTileClick: (id: number) => void;
 }
 
@@ -231,7 +235,8 @@ const Board = memo(function Board(p: BoardProps) {
             isShake={shake === t.tileId}
             targeting={targeting && free}
             faceFont={faceFont}
-            title={t.victory ? "승리 카드" : `${card.name} · ${card.gradeLabel}`}
+            victoryFace={p.victoryFace}
+            title={t.victory ? p.victoryTitle : `${card.name} · ${card.gradeLabel}`}
             onClick={onTileClick}
           />
         );
@@ -387,7 +392,7 @@ export default function Game({ init, room, myId, resume }: Props) {
       if (p.comboPower) setPower(p.comboPower);
       if (p.dexUnlocked && p.dexUnlocked.length > 0) {
         const names = p.dexUnlocked.map((id) => cards.find((c) => c.cardId === id)?.name ?? id).join(", ");
-        flash(`📖 도감 등록! ${names}`);
+        flash(t("game.dexRegistered", { names }));
       }
     };
 
@@ -418,11 +423,11 @@ export default function Game({ init, room, myId, resume }: Props) {
       }
       setTiles(p.tiles);
       if (p.reserveRows !== undefined) setReserveRows(p.reserveRows);
-      if (p.reason === "up") flash("⬆ 한 줄 상승!");
+      if (p.reason === "up") flash(t("game.rowRaised"));
       else if (p.reason === "shuffle" || p.reason === "reshuffle")
-        flash(p.reason === "reshuffle" ? "막혔어요 — 자동으로 카드를 섞었습니다" : "카드를 섞었습니다");
-      else if (p.reason === "scissor") flash("✂️ 가위로 짝을 제거했습니다");
-      else if (p.reason === "combo") flash("⚡ 콤보 효과 발동!");
+        flash(t(p.reason === "reshuffle" ? "game.autoReshuffled" : "game.shuffled"));
+      else if (p.reason === "scissor") flash(t("game.scissorRemoved"));
+      else if (p.reason === "combo") flash(t("game.comboActivated"));
       // rolling 은 CSS 트랜지션으로 부드럽게 이동 (별도 노티 없음)
     };
 
@@ -526,18 +531,18 @@ export default function Game({ init, room, myId, resume }: Props) {
   }, []);
 
   // ── 타일 클릭 ───────────────────────────────────────────────
-  function onTile(t: TileState) {
+  function onTile(tile: TileState) {
     if (stuck || remaining === 0) return; // 교착/클리어 후 클릭 차단 — pending 진입 자체를 막아 소프트락 방지
-    if (t.removed || !isFreeState(tiles, t, init.mapMode)) return;
+    if (tile.removed || !isFreeState(tiles, tile, init.mapMode)) return;
     audio.playSound("select"); // 카드 클릭 — 짧고 가벼운 틱
 
     // 콤보 파워 지정 모드: 클릭한 카드로 발동
     if (power) {
-      if (t.victory) {
-        flash("승리 카드는 콤보 파워로 제거할 수 없어요"); // 파워 유지 — 다른 카드 지정 가능
+      if (tile.victory) {
+        flash(t("game.victoryComboForbidden")); // 파워 유지 — 다른 카드 지정 가능
         return;
       }
-      getSocket().emit("combo:power", { cardId: cardOf(t).cardId }, (r) => {
+      getSocket().emit("combo:power", { cardId: cardOf(tile).cardId }, (r) => {
         if (!r.ok) flash(errText(r.error));
       });
       setPower(null);
@@ -546,22 +551,22 @@ export default function Game({ init, room, myId, resume }: Props) {
 
     // 가위 모드: 카드 1장 클릭 → 같은 matchKey 의 다른 free·미제거 타일을 자동으로 찾아 짝 제거
     if (scissorOn) {
-      if (t.victory) {
-        flash("승리 카드는 가위로 제거할 수 없어요"); // 모드 유지 — 다른 카드 클릭 가능
+      if (tile.victory) {
+        flash(t("game.victoryScissorForbidden")); // 모드 유지 — 다른 카드 클릭 가능
         return;
       }
       const other = tiles.find(
         (x) =>
-          x.tileId !== t.tileId &&
+          x.tileId !== tile.tileId &&
           !x.removed &&
           isFreeState(tiles, x, init.mapMode) &&
-          cardOf(x).matchKey === cardOf(t).matchKey
+          cardOf(x).matchKey === cardOf(tile).matchKey
       );
       if (!other) {
-        flash("제거할 짝을 찾을 수 없어요"); // 모드 유지 — 다른 카드 클릭 가능
+        flash(t("game.noPair")); // 모드 유지 — 다른 카드 클릭 가능
         return;
       }
-      const pair: [number, number] = [t.tileId, other.tileId];
+      const pair: [number, number] = [tile.tileId, other.tileId];
       audio.playSound("scissor"); // 가위 사용 — 스와이프/휘릭
       setItems((it) => ({ ...it, scissor: it.scissor - 1 })); // 낙관적 즉시 차감
       getSocket().emit("item:use", { type: "scissor", tiles: pair }, (r) => {
@@ -576,24 +581,24 @@ export default function Game({ init, room, myId, resume }: Props) {
     // 일반 매칭: 두 번째 클릭에서 서버로 전송 (판정은 전적으로 서버)
     if (pending) return; // 서버 응답 대기 중
     if (sel === null) {
-      setSel(t.tileId);
+      setSel(tile.tileId);
       return;
     }
-    if (sel === t.tileId) {
+    if (sel === tile.tileId) {
       setSel(null);
       return;
     }
     const a = tiles.find((x) => x.tileId === sel);
     if (!a) {
-      setSel(t.tileId);
+      setSel(tile.tileId);
       return;
     }
-    if (cardOf(a).matchKey !== cardOf(t).matchKey) {
+    if (cardOf(a).matchKey !== cardOf(tile).matchKey) {
       // 다른 카드는 선택 이동 (경로 선판정은 하지 않음)
-      setSel(t.tileId);
+      setSel(tile.tileId);
       return;
     }
-    const pair: [number, number] = [sel, t.tileId];
+    const pair: [number, number] = [sel, tile.tileId];
     pendingRef.current = pair;
     setPending(pair);
     getSocket().emit("tile:match", { tileA: pair[0], tileB: pair[1] }, (r) => {
@@ -642,7 +647,7 @@ export default function Game({ init, room, myId, resume }: Props) {
       return;
     }
     if (items.scissor <= 0) {
-      flash("가위를 모두 사용했어요");
+      flash(t("game.scissorExhausted"));
       return;
     }
     setSel(null);
@@ -737,7 +742,7 @@ export default function Game({ init, room, myId, resume }: Props) {
         {players.length === 0 && (
           <div className="slot-player">
             <div className="avatar">{avatarFor(myId)}</div>
-            <div className="sp-name">나</div>
+            <div className="sp-name">{t("game.me")}</div>
           </div>
         )}
         {players.map((p) => {
@@ -747,11 +752,11 @@ export default function Game({ init, room, myId, resume }: Props) {
             <div key={p.playerId} className={`slot-player game-player ${isMe ? "me" : ""}`}>
               <div className="avatar">{avatarFor(p.playerId)}</div>
               <div className="sp-name">@{p.nickname}</div>
-              {p.isHost && <span className="chip host game-host-chip">방장</span>}
+              {p.isHost && <span className="chip host game-host-chip">{t("game.host")}</span>}
               {!isMe && (
-                <div className="gp-mini" title={`남은 ${pr.remaining} · 점수 ${pr.score}`}>
-                  <span>남은 {pr.remaining}</span>
-                  {!p.connected && <span className="pc-off">끊김</span>}
+                <div className="gp-mini" title={t("game.playerStatus", { remaining: pr.remaining, score: pr.score })}>
+                  <span>{t("game.remainingShort", { count: pr.remaining })}</span>
+                  {!p.connected && <span className="pc-off">{t("game.disconnected")}</span>}
                   {p.finishedRank === 1 && <span> 🏆</span>}
                 </div>
               )}
@@ -766,29 +771,29 @@ export default function Game({ init, room, myId, resume }: Props) {
           <h2 className="game-title">{centerTitle}</h2>
           <div className="game-title-tags">
             <span className={`tag ${init.mapMode}`}>{modeLabel(init.mapMode)}</span>
-            {init.mapMode === "up" && <span className="tag reserve-tag">남은 줄 {reserveRows}</span>}
+            {init.mapMode === "up" && <span className="tag reserve-tag">{t("game.rowsLeft", { count: reserveRows })}</span>}
           </div>
         </div>
 
         {/* 모드 배너: 콤보 파워 지정 / 가위 대상 지정 */}
         {power && (
           <div className="mode-banner power">
-            ⚡ {power.level}콤보!{" "}
+            ⚡ {t("game.combo", { count: power.level })}{" "}
             {power.kind === "pair"
-              ? "카드를 지정하면 짝이 제거됩니다"
-              : "카드를 지정하면 동일 카드 전체가 제거됩니다"}
-            <button className="banner-cancel" onClick={() => setPower(null)}>취소</button>
+              ? t("game.powerPairPrompt")
+              : t("game.powerClearPrompt")}
+            <button className="banner-cancel" onClick={() => setPower(null)}>{t("game.cancel")}</button>
           </div>
         )}
         {scissorOn && !power && (
           <div className="mode-banner scissor">
-            ✂️ 가위 — 제거할 카드 1장을 선택하세요
-            <button className="banner-cancel" onClick={toggleScissor}>취소</button>
+            {t("game.scissorPrompt")}
+            <button className="banner-cancel" onClick={toggleScissor}>{t("game.cancel")}</button>
           </div>
         )}
 
         <div className={`board-wrap map-theme-${init.theme ?? "default"}`}>
-          <div className="gboard" style={{ width: boardW, height: boardH }} role="group" aria-label="게임 보드 — 같은 카드 두 장을 골라 짝을 맞추세요">
+          <div className="gboard" style={{ width: boardW, height: boardH }} role="group" aria-label={t("game.boardAria")}>
 
             {/* 마스크 유효 칸(빈 slot) 표시 */}
             {baseCells.map((cell) => (
@@ -812,6 +817,8 @@ export default function Game({ init, room, myId, resume }: Props) {
               cellW={cellW}
               cellH={cellH}
               faceFont={Math.round(cellH * 0.5)}
+              victoryFace={t("game.victoryFace")}
+              victoryTitle={t("game.victoryCard")}
               onTileClick={handleTileClick}
             />
 
@@ -825,7 +832,7 @@ export default function Game({ init, room, myId, resume }: Props) {
                 {v.card.imageUrlThumb || v.card.imageUrl ? (
                   <img src={v.card.imageUrlThumb || v.card.imageUrl} alt="" decoding="async" />
                 ) : (
-                  <span className="victory-face" style={{ fontSize: Math.round(cellH * 0.5) }}>승</span>
+                  <span className="victory-face" style={{ fontSize: Math.round(cellH * 0.5) }}>{t("game.victoryFace")}</span>
                 )}
               </div>
             ))}
@@ -857,17 +864,17 @@ export default function Game({ init, room, myId, resume }: Props) {
       {/* ── 우: 사이드바(등수/패/소거/아이템/점수·시간) ── */}
       <aside className="side-right game-right">
         <div className="rank-box">
-          <div className="rank-label">현재 등수</div>
-          <div className="rank-value">{myRank !== null ? `${myRank}위` : "—"}</div>
+          <div className="rank-label">{t("game.currentRank")}</div>
+          <div className="rank-value">{myRank !== null ? t("game.rank", { rank: myRank }) : "—"}</div>
         </div>
 
         <div className="panel side-metrics">
           <div className="side-stat">
-            <span className="ss-label">남은 패</span>
+            <span className="ss-label">{t("game.tilesLeft")}</span>
             <span className="ss-val">{remaining}</span>
           </div>
           <div className="side-stat">
-            <span className="ss-label">소거가능</span>
+            <span className="ss-label">{t("game.removable")}</span>
             <span className="ss-val green">{removable}</span>
           </div>
         </div>
@@ -878,39 +885,39 @@ export default function Game({ init, room, myId, resume }: Props) {
             disabled={items.search <= 0}
             onClick={() => useSimpleItem("search")}
           >
-            <span className="gi-top"><span className="key-cap">F1</span> 🔍 서치</span>
-            <span className="gi-sub">남은 횟수 {items.search}</span>
+            <span className="gi-top"><span className="key-cap">F1</span> {t("game.search")}</span>
+            <span className="gi-sub">{t("game.usesLeft", { count: items.search })}</span>
           </button>
           <button
             className="game-item"
             disabled={items.shuffle <= 0}
             onClick={() => useSimpleItem("shuffle")}
           >
-            <span className="gi-top"><span className="key-cap">F2</span> 🔀 패 섞기</span>
-            <span className="gi-sub">남은 횟수 {items.shuffle}</span>
+            <span className="gi-top"><span className="key-cap">F2</span> {t("game.shuffle")}</span>
+            <span className="gi-sub">{t("game.usesLeft", { count: items.shuffle })}</span>
           </button>
           <button
             className={`game-item ${scissorOn ? "on" : ""}`}
             disabled={items.scissor <= 0 && !scissorOn}
             onClick={toggleScissor}
           >
-            <span className="gi-top"><span className="key-cap">F3</span> ✂️ 가위</span>
-            <span className="gi-sub">남은 횟수 {items.scissor}</span>
+            <span className="gi-top"><span className="key-cap">F3</span> {t("game.scissors")}</span>
+            <span className="gi-sub">{t("game.usesLeft", { count: items.scissor })}</span>
           </button>
         </div>
 
         <div className="panel side-metrics side-score">
           <div className="side-stat">
-            <span className="ss-label">점수</span>
+            <span className="ss-label">{t("game.score")}</span>
             <span className="ss-val" key={score} ><span className="score-bump">{score.toLocaleString()}</span></span>
           </div>
           <div className="side-stat">
-            <span className="ss-label">남은 시간</span>
+            <span className="ss-label">{t("game.timeLeft")}</span>
             <span className="ss-val" style={timeUrgent ? { color: "#ef4444" } : undefined}>{mm}:{ss}</span>
           </div>
           {combo > 0 && (
             <div className="side-combo" key={comboKey}>
-              <span className="combo">{combo} 콤보!</span>
+              <span className="combo">{t("game.combo", { count: combo })}</span>
               <span className="combo-bar" style={{ animationDuration: `${COMBO_WINDOW_MS}ms` }} />
             </div>
           )}
@@ -920,18 +927,18 @@ export default function Game({ init, room, myId, resume }: Props) {
         <button
           className="btn btn-dark btn-block mute-btn"
           onClick={() => setMuted(audio.toggleMute())}
-          title={muted ? "음소거 해제" : "음소거"}
+          title={t(muted ? "game.unmute" : "game.mute")}
         >
-          {muted ? "🔇 음소거됨" : "🔊 소리"}
+          {t(muted ? "game.muted" : "game.sound")}
         </button>
-        <button className="btn btn-dark btn-block" onClick={() => flash("옵션은 준비 중입니다")}>옵션</button>
+        <button className="btn btn-dark btn-block" onClick={() => flash(t("game.optionsPending"))}>{t("game.options")}</button>
         {/* 게임 중 일방적 이탈 금지 (플레이 피드백) — 결과 화면 → 대기실 경로로만 퇴장 */}
         <button
           className="btn btn-dark btn-block"
-          onClick={() => flash("게임 중에는 나갈 수 없습니다")}
-          title="게임 중에는 나갈 수 없습니다"
+          onClick={() => flash(t("game.cannotLeave"))}
+          title={t("game.cannotLeave")}
         >
-          🔒 나가기
+          {t("game.leaveLocked")}
         </button>
       </aside>
 
@@ -941,7 +948,7 @@ export default function Game({ init, room, myId, resume }: Props) {
           className="countdown-overlay"
           style={{ pointerEvents: "none", background: "rgba(6,10,18,0.18)" }}
           aria-live="assertive"
-          aria-label={`${remainingSeconds}초 남음`}
+          aria-label={t("game.secondsLeft", { count: remainingSeconds })}
         >
           <div
             key={remainingSeconds}
@@ -956,24 +963,23 @@ export default function Game({ init, room, myId, resume }: Props) {
       {/* 1위 확정 → 10초 유예 카운트다운 (플레이는 계속 가능) */}
       {finishing && (
         <div className="finishing">
-          🏆 <b>{finishing.nickname}</b> 1위! <b className="fin-sec">{finishing.sec}</b>초 후 종료 —
-          남은 시간 동안 계속 플레이할 수 있어요
+          {t("game.finishingPrefix")} <b>{finishing.nickname}</b> {t("game.finishingMiddle")} <b className="fin-sec">{finishing.sec}</b>{t("game.finishingSuffix")}
         </div>
       )}
 
       {/* 내 보드 클리어 (결과 대기) */}
       {remaining === 0 && (
-        <div className="cleared-wait">🎉 모든 카드를 제거했어요! 결과 집계 중…</div>
+        <div className="cleared-wait">{t("game.clearedWaiting")}</div>
       )}
 
       {/* UP 교착 — 더 진행 불가 (게임 오버, 결과 대기) */}
       {stuck && remaining > 0 && (
         <div className="stuck-over">
-          <div className="stuck-over-title">💀 게임 오버</div>
+          <div className="stuck-over-title">{t("game.gameOver")}</div>
           <div className="stuck-over-sub">
-            더 이상 연결할 카드가 없어요 (교착).
+            {t("game.stuck")}
             <br />
-            남은 순위를 집계하는 중…
+            {t("game.rankingWaiting")}
           </div>
         </div>
       )}
@@ -988,15 +994,15 @@ export default function Game({ init, room, myId, resume }: Props) {
           {toast.imageUrlThumb || toast.imageUrl ? (
             <img src={toast.imageUrlThumb || toast.imageUrl} alt="" decoding="async" />
           ) : (
-            <span className="victory-face docent-face">승</span>
+            <span className="victory-face docent-face">{t("game.victoryFace")}</span>
           )}
           <div>
             <div className="d-name">{toast.name}</div>
             <div className="d-sub">
-              {toast.gradeLabel} · {hasRealPrice(toast) ? usd(toast.priceUsdCents) : "예시 데이터"}
+              {toast.gradeLabel} · {hasRealPrice(toast) ? usd(toast.priceUsdCents) : t("game.sampleData")}
             </div>
             <a className="d-src" href={marketUrl(toast.href)} target="_blank" rel="noreferrer">
-              Renaiss OS Index ↗
+              {t("common.indexLink")}
             </a>
           </div>
         </div>

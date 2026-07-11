@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import type { RoomConfig, RoomDetail } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
 import { errText, modeLabel, stateLabel } from "../labels.ts";
+import { t } from "../i18n.ts";
 import MapSelect, { MAP_PRESETS, MapIcon, mapDiffLabel, type MapPreset } from "./MapSelect.tsx";
 
 interface Props {
@@ -75,7 +76,7 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
   // 프리뷰: 선택 프리셋 or 현재 방 설정 기반(날조 없이 실제 모드/난이도 표기).
   const prevEmoji = picked?.emoji ?? "🗺️";
   const prevIconUrl = picked?.iconUrl; // 포켓몬 맵이면 스프라이트, 아니면 undefined → 이모지 폴백
-  const prevName = picked?.name ?? `${modeLabel(room.mapMode)} 맵`;
+  const prevName = picked?.name ?? t("room.mapName", { mode: modeLabel(room.mapMode) });
   const prevDiff = picked?.difficulty ?? room.difficulty;
   const prevTheme = picked?.theme ?? room.theme ?? "default";
 
@@ -95,7 +96,7 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
             return (
               <div key={`empty-${i}`} className="slot-player empty">
                 <div className="avatar lg">＋</div>
-                <span className="sp-name">빈 자리</span>
+                <span className="sp-name">{t("room.emptySlot")}</span>
               </div>
             );
           }
@@ -103,9 +104,9 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
             <div key={p.playerId} className="slot-player">
               <div className="avatar lg">{AVATARS[i % AVATARS.length]}</div>
               <span className="sp-name">@{p.nickname}</span>
-              {p.isHost && <span className="chip host">방장</span>}
-              {!p.isHost && p.playerId === myId && <span className="chip green">나</span>}
-              {!p.connected && <span className="pc-off">연결 끊김</span>}
+              {p.isHost && <span className="chip host">{t("game.host")}</span>}
+              {!p.isHost && p.playerId === myId && <span className="chip green">{t("game.me")}</span>}
+              {!p.connected && <span className="pc-off">{t("room.disconnected")}</span>}
             </div>
           );
         })}
@@ -122,7 +123,7 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
             <div style={{ alignSelf: "stretch", textAlign: "center", paddingBottom: 8 }}>
               <span style={{ fontWeight: 700 }}>{room.name}</span>{" "}
               <span className="chip accent">
-                {room.state === "waiting" ? "대기 중" : stateLabel(room.state)}
+                {room.state === "waiting" ? t("room.waiting") : stateLabel(room.state)}
               </span>
             </div>
 
@@ -167,18 +168,18 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
               {isHost ? (
                 <div style={{ display: "flex", gap: 14 }}>
                   <button className="btn btn-dark" style={bigBtn} onClick={() => setMapOpen(true)}>
-                    맵 선택
+                    {t("room.selectMap")}
                   </button>
                   <button className="btn btn-green" style={bigBtn} onClick={start} disabled={busy}>
-                    게임 시작
+                    {t("room.startGame")}
                   </button>
                 </div>
               ) : (
-                <div className="chip">방장이 게임을 시작하길 기다리는 중…</div>
+                <div className="chip">{t("room.waitingForHost")}</div>
               )}
 
               <p className="muted" style={{ fontSize: 12.5, textAlign: "center", margin: 0 }}>
-                방장이 맵을 선택하고 게임 시작 버튼을 누르면 게임이 시작됩니다.
+                {t("room.startHint")}
               </p>
             </div>
           </>
@@ -189,35 +190,35 @@ export default function Room({ room, myId, onLeave, flash }: Props) {
       {!mapOpen && (
       <aside className="side-right">
         <div style={{ textAlign: "center", padding: "6px 0 12px", borderBottom: "1px solid var(--border)" }}>
-          <div className="ss-label">현재 등수</div>
+          <div className="ss-label">{t("game.currentRank")}</div>
           <div className="ss-val" style={{ fontSize: 26 }}>—</div>
         </div>
         <div className="side-stat">
-          <span className="ss-label">남은 패</span>
+          <span className="ss-label">{t("game.tilesLeft")}</span>
           <span className="ss-val">—</span>
         </div>
         <div className="side-stat">
-          <span className="ss-label">소거가능</span>
+          <span className="ss-label">{t("game.removable")}</span>
           <span className="ss-val">—</span>
         </div>
 
         <div className="item-row disabled">
-          <span className="key-cap">F1</span> 🔍 서치
+          <span className="key-cap">F1</span> {t("game.search")}
         </div>
         <div className="item-row disabled">
-          <span className="key-cap">F2</span> 🎴 섞기
+          <span className="key-cap">F2</span> {t("game.shuffle")}
         </div>
         <div className="item-row disabled">
-          <span className="key-cap">F3</span> ✂️ 가위
+          <span className="key-cap">F3</span> {t("game.scissors")}
         </div>
 
         <div className="spacer" />
 
-        <button className="btn btn-dark btn-block" onClick={() => flash("옵션은 준비 중입니다")}>
-          옵션
+        <button className="btn btn-dark btn-block" onClick={() => flash(t("game.optionsPending"))}>
+          {t("game.options")}
         </button>
         <button className="btn btn-danger btn-block" onClick={onLeave}>
-          나가기
+          {t("room.leave")}
         </button>
       </aside>
       )}
