@@ -29,14 +29,14 @@ const sig = (board: Board): string =>
     r: board.reserve.map((row) => row.map((card) => card.cardId)),
   });
 
-// 2차 반복(눈 구멍 + 캔버스 확대): easy 10×13/72 · normal 12×16/98(구멍2) · hard 14×18/146(구멍2)
+// 피카츄 머리 도안: easy 10×13/68 · normal 12×16/100 · hard 14×18/142
 const EXPECTED: Record<
   DifficultyKey,
   { rows: number; cols: number; layer0: number; layer0Max: number }
 > = {
-  easy: { rows: 10, cols: 13, layer0: 72, layer0Max: 80 },
-  normal: { rows: 12, cols: 16, layer0: 102, layer0Max: 110 },
-  hard: { rows: 14, cols: 18, layer0: 150, layer0Max: 150 },
+  easy: { rows: 10, cols: 13, layer0: 68, layer0Max: 80 },
+  normal: { rows: 12, cols: 16, layer0: 100, layer0Max: 110 },
+  hard: { rows: 14, cols: 18, layer0: 142, layer0Max: 150 },
 };
 const MODES: MapMode[] = ["normal", "victory", "shanghai"];
 const DIFFS: DifficultyKey[] = DIFFICULTIES.map((difficulty) => difficulty.key);
@@ -122,6 +122,7 @@ const SILHOUETTE_CASES: SilhouetteCase[] = [
   { mask: "sudowoodo", mode: "normal", layer0: { easy: 48, normal: 76, hard: 90 } },
   { mask: "skull", mode: "normal", layer0: { easy: 44, normal: 76, hard: 88 } },
   { mask: "apple", mode: "normal", layer0: { easy: 82, normal: 122, hard: 150 } },
+  { mask: "unown", mode: "normal", layer0: { easy: 38, normal: 56, hard: 62 } },
 ];
 const SILHOUETTE_SEEDS = 30;
 const SILHOUETTE_CANVAS: Record<DifficultyKey, { rows: number; cols: number; layer0Max: number }> = {
@@ -224,17 +225,17 @@ for (const silhouette of SILHOUETTE_CASES) {
 
 console.log("\n[단언]");
 check("캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", canvasFail === 0);
-check("layer 0 타일 수 일치: easy 72 / normal 102 / hard 150", layer0CountFail === 0);
+check("layer 0 타일 수 일치: easy 68 / normal 100 / hard 142", layer0CountFail === 0);
 check("layer 0 난이도 상한 준수: easy ≤80 / normal ≤110 / hard ≤150", layer0LimitFail === 0);
 check("총 타일 수 짝수 (상하이 상층 포함)", oddTotal === 0);
 check("데드락 0건 (모든 피카츄 보드 hasMove)", deadlocks === 0);
 check("결정성: 같은 시드 2회 완전 동일", detFail === 0);
-check("신규 6종 캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", silhouetteCanvasFail === 0);
-check("신규 6종 layer 0 타일 수 핀 고정", silhouetteLayer0Fail === 0);
-check("신규 6종 layer 0 상한 준수: easy ≤90 / normal ≤130 / hard ≤160", silhouetteLayer0LimitFail === 0);
-check("신규 6종 총 타일 수 짝수 (상하이 상층 포함)", silhouetteOddTotal === 0);
-check("신규 6종 데드락 0건 (모든 보드 hasMove)", silhouetteDeadlocks === 0);
-check("신규 6종 결정성: 같은 시드 2회 완전 동일", silhouetteDetFail === 0);
+check("신규 7종 캔버스 치수 일치: easy 10×13 / normal 12×16 / hard 14×18", silhouetteCanvasFail === 0);
+check("신규 7종 layer 0 타일 수 핀 고정", silhouetteLayer0Fail === 0);
+check("신규 7종 layer 0 상한 준수: easy ≤90 / normal ≤130 / hard ≤160", silhouetteLayer0LimitFail === 0);
+check("신규 7종 총 타일 수 짝수 (상하이 상층 포함)", silhouetteOddTotal === 0);
+check("신규 7종 데드락 0건 (모든 보드 hasMove)", silhouetteDeadlocks === 0);
+check("신규 7종 결정성: 같은 시드 2회 완전 동일", silhouetteDetFail === 0);
 check("UP 은 mask:'pikachu' 지정에도 rect 강제", upRectFail === 0);
 check("UP 은 기존 치수 유지: rows 4/6/8, cols 10", upSizeFail === 0);
 

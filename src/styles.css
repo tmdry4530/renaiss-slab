@@ -515,13 +515,15 @@ h2 { font-size: 16px; margin: 0; }
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
     radial-gradient(120% 120% at 50% 15%, #4a4a54 0%, #1c1c22 55%, #050506 100%);
 }
-.map-theme-bulbasaur {
+.map-theme-magikarp {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
-    radial-gradient(120% 120% at 50% 15%, #a2eda0 0%, #45a852 55%, #1f5c29 100%);
+    radial-gradient(110% 65% at 25% 12%, rgba(255, 221, 88, .88) 0%, rgba(255, 221, 88, 0) 45%),
+    linear-gradient(160deg, #ffbd45 0%, #ef6a2e 52%, #9f271c 100%);
 }
-.map-theme-squirtle {
+.map-theme-ditto {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
-    radial-gradient(120% 120% at 50% 12%, #a7e4f7 0%, #379bd9 55%, #124a70 100%);
+    radial-gradient(75% 55% at 38% 18%, rgba(255, 245, 255, .72) 0%, rgba(255, 245, 255, 0) 48%),
+    radial-gradient(120% 120% at 50% 15%, #e3b8f5 0%, #ad70cc 58%, #67427f 100%);
 }
 .map-theme-luffy {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
@@ -532,9 +534,10 @@ h2 { font-size: 16px; margin: 0; }
     radial-gradient(100% 80% at 72% 18%, rgba(255, 220, 62, .82) 0%, rgba(255, 220, 62, 0) 18%),
     linear-gradient(160deg, #66778b 0%, #303d50 52%, #111925 100%);
 }
-.map-theme-mewtwo {
+.map-theme-unown {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),
-    radial-gradient(120% 120% at 50% 15%, #d3aef7 0%, #8a4bd6 55%, #351761 100%);
+    radial-gradient(100% 75% at 50% 8%, rgba(255, 229, 157, .72) 0%, rgba(255, 229, 157, 0) 55%),
+    linear-gradient(160deg, #c9a66b 0%, #8b6d42 55%, #473721 100%);
 }
 .map-theme-chopper {
   background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.42)),

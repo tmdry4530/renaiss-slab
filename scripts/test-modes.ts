@@ -294,11 +294,11 @@ console.log("[테마 맵 실루엣]");
     { theme: "pikachu",      mode: "shanghai", diff: "hard", sil: true },  // 상하이 — pikachu 실루엣
     { theme: "charizard",    mode: "victory",  diff: "hard", sil: true },  // 승리 — charizard 실루엣
     { theme: "jolly-roger",  mode: "normal",   diff: "easy", sil: true },  // 일반 — skull 실루엣
-    { theme: "bulbasaur",    mode: "rolling",  diff: "easy", sil: false }, // 롤링 — rect
-    { theme: "squirtle",     mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
+    { theme: "magikarp",     mode: "rolling",  diff: "easy", sil: false }, // 롤링 — rect
+    { theme: "ditto",        mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
     { theme: "luffy",        mode: "victory",  diff: "hard", sil: true },  // 승리 — star 실루엣
     { theme: "zeus",         mode: "shanghai", diff: "easy", sil: true },  // 상하이 — zeus(뇌운) 실루엣
-    { theme: "mewtwo",       mode: "normal",   diff: "hard", sil: true },  // 일반 — crystal 실루엣
+    { theme: "unown",        mode: "normal",   diff: "hard", sil: true },  // 일반 — unown 실루엣
     { theme: "chopper",      mode: "rolling",  diff: "easy", sil: false }, // 롤링 — donut(링)
     { theme: "navy-road",    mode: "up",       diff: "hard", sil: false }, // UP — rect 강제
   ];
