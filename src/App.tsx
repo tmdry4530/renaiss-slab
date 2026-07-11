@@ -13,6 +13,7 @@ import type {
 import { COUNTDOWN_STEPS, COUNTDOWN_STEP_MS } from "../shared/protocol.ts";
 import { getSocket, hello, loadNickname, loadPlayerId } from "./net.ts";
 import { errText } from "./labels.ts";
+import { t, useLang, type Lang } from "./i18n.ts";
 import { audio } from "./audio.ts";
 import Login from "./screens/Login.tsx";
 import Lobby from "./screens/Lobby.tsx";
@@ -22,6 +23,30 @@ import Result from "./screens/Result.tsx";
 import Dex from "./screens/Dex.tsx";
 
 type Screen = "login" | "lobby" | "room" | "game" | "result" | "dex";
+
+function LanguageToggle({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
+  return (
+    <div className="lang-toggle" role="group" aria-label={t("lang.switch")}>
+      <button
+        type="button"
+        className={`ghost lang-option${lang === "ko" ? " active" : ""}`}
+        aria-pressed={lang === "ko"}
+        onClick={() => onChange("ko")}
+      >
+        KO
+      </button>
+      <span aria-hidden="true">|</span>
+      <button
+        type="button"
+        className={`ghost lang-option${lang === "en" ? " active" : ""}`}
+        aria-pressed={lang === "en"}
+        onClick={() => onChange("en")}
+      >
+        EN
+      </button>
+    </div>
+  );
+}
 
 // GO(game:countdown{0}) 미도착 대비 안전 타임아웃(ms) — 카운트다운 총 길이 + 여유.
 // board:init 은 카운트다운 시작에 먼저 도착하므로, 이 fallback 은 GO 신호 누락 시 오버레이를 강제 해제한다.
@@ -67,6 +92,7 @@ function parseHash(): { screen: Screen; roomId?: string } {
 }
 
 export default function App() {
+  const { lang, setLang } = useLang();
   const [screen, setScreen] = useState<Screen>("login");
   const [nickname, setNickname] = useState(loadNickname());
   const [playerId, setPlayerId] = useState(loadPlayerId() ?? "");
@@ -74,7 +100,7 @@ export default function App() {
   const playerIdRef = useRef(playerId);
   playerIdRef.current = playerId;
   const [pool, setPool] = useState<CardPool | null>(null);
-  const [dataError, setDataError] = useState<string | null>(null);
+  const [dataError, setDataError] = useState(false);
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [boardInit, setBoardInit] = useState<BoardInit | null>(null);
   const [resumeProgress, setResumeProgress] = useState<ResumeProgress | null>(null); // 재접속 복구 시에만 세팅
@@ -107,9 +133,9 @@ export default function App() {
     if (pool || poolLoadingRef.current) return;
     poolLoadingRef.current = true;
     fetch("/data/card-pool.json")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("card-pool.json 없음 — npm run prefetch 실행"))))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("card pool unavailable"))))
       .then(setPool)
-      .catch((e) => setDataError(String(e.message ?? e)))
+      .catch(() => setDataError(true))
       .finally(() => {
         poolLoadingRef.current = false;
       });
@@ -189,8 +215,8 @@ export default function App() {
       setRoom(null);
       flash(
         p.reason === "hostLeft"
-          ? "방장이 나가서 방이 사라졌습니다"
-          : `방이 닫혔습니다 (${p.reason})`
+          ? t("app.roomClosed.hostLeft")
+          : t("app.roomClosed.default", { reason: p.reason })
       );
       setScreen((cur) => (cur === "room" || cur === "game" ? "lobby" : cur));
     };
@@ -352,6 +378,7 @@ export default function App() {
             <div className="brand-title">Slab King</div>
             <div className="brand-sub">by Renaiss</div>
           </div>
+          <LanguageToggle lang={lang} onChange={setLang} />
         </header>
       )}
       {showHero && (
@@ -360,28 +387,29 @@ export default function App() {
             <span className="logo">♔</span>
             <div>
               <h1>Renaiss Slab King</h1>
-              <p className="tagline">실제 Renaiss 카드로 즐기는 입문 게임</p>
+              <p className="tagline">{t("app.tagline")}</p>
             </div>
           </div>
           <div className="hero-right">
             {screen !== "login" && nickname && (
               <span className="hero-nick">👤 {nickname}</span>
             )}
+            {screen === "login" && <LanguageToggle lang={lang} onChange={setLang} />}
             <div className="data-note">
-              데이터{" "}
+              {t("app.dataSourcePrefix")}
               <a href="https://index.renaissos.com" target="_blank" rel="noreferrer">
                 Renaiss OS Index
               </a>
-              {" · "}마켓/팩 공식 <code>renaiss</code> CLI
+              {t("app.dataSourceSuffix")}<code>renaiss</code> CLI
             </div>
           </div>
         </header>
       )}
 
       {!connected && screen !== "login" && (
-        <div className="banner error">⚠ 서버와 연결이 끊겼습니다 — 자동 재접속 중…</div>
+        <div className="banner error">⚠ {t("app.disconnected")}</div>
       )}
-      {dataError && <div className="banner error">⚠ {dataError}</div>}
+      {dataError && <div className="banner error">⚠ {t("app.cardPoolMissing")}</div>}
 
       {screen === "login" && <Login initial={nickname} onSubmit={onLogin} />}
 
@@ -407,8 +435,8 @@ export default function App() {
       )}
       {screen === "room" && !room && (
         <section className="panel">
-          <p className="muted">방 정보가 없습니다.</p>
-          <button className="ghost" onClick={() => setScreen("lobby")}>← 로비로</button>
+          <p className="muted">{t("app.roomMissing")}</p>
+          <button className="ghost" onClick={() => setScreen("lobby")}>{t("app.backToLobby")}</button>
         </section>
       )}
 
@@ -437,13 +465,13 @@ export default function App() {
       {(countdownSec !== null || showGo) && (
         <div className="countdown-overlay">
           <div key={showGo ? "go" : countdownSec} className={`countdown-number${showGo ? " go" : ""}`}>
-            {showGo ? "시작!" : countdownSec}
+            {showGo ? t("app.start") : countdownSec}
           </div>
         </div>
       )}
 
       {showHero && (
-        <footer className="foot">가격·등급은 Renaiss OS Index 출처. 비영리 팬 프로토타입.</footer>
+        <footer className="foot">{t("app.footer")}</footer>
       )}
     </div>
   );

@@ -2,6 +2,7 @@
 // 실서비스 스펙(X OAuth / Web3 지갑)은 데모에서 게스트 로그인으로 대체한다.
 import { useState } from "react";
 import { audio } from "../audio.ts";
+import { t } from "../i18n.ts";
 
 interface Props {
   initial: string;
@@ -29,24 +30,25 @@ export default function Login({ initial, onSubmit }: Props) {
       <div className="login-card">
         <div className="login-logo">♔</div>
         <h2>Renaiss Slab King</h2>
-        <p className="tagline">실제 Renaiss 카드로 즐기는 입문 게임</p>
+        <p className="tagline">{t("app.tagline")}</p>
         <form onSubmit={submit}>
-          <label htmlFor="nick">게스트 닉네임 <span className="muted">(1~12자)</span></label>
+          <label htmlFor="nick">
+            {t("login.nickname")} <span className="muted">{t("login.nicknameHint")}</span>
+          </label>
           <input
             id="nick"
             value={nick}
             maxLength={12}
             autoFocus
-            placeholder="닉네임을 입력하세요"
+            placeholder={t("login.placeholder")}
             onChange={(e) => setNick(e.target.value)}
           />
           <button className="btn primary big" type="submit" disabled={!valid || busy}>
-            {busy ? "접속 중…" : "게스트로 시작"}
+            {busy ? t("login.connecting") : t("login.start")}
           </button>
         </form>
         <p className="muted small">
-          데모에서는 닉네임만으로 바로 시작합니다. 실서비스에서는 X(트위터) 또는 Web3 지갑으로
-          Renaiss 계정과 연동됩니다.
+          {t("login.demoNote")}
         </p>
       </div>
     </section>

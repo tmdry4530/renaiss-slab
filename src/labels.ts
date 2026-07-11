@@ -1,52 +1,47 @@
-// 공용 라벨·포맷 헬퍼 (한국어 UI 문구 매핑)
 import {
-  MAP_MODES,
   type DifficultyKey,
   type GameSel,
   type MapMode,
   type RoomState,
 } from "../shared/protocol.ts";
+import { t } from "./i18n.ts";
 
-export const gameLabel = (g: GameSel): string => (g === "pokemon" ? "포켓몬" : "원피스");
+export const gameLabel = (g: GameSel): string => t(`label.game.${g}`);
 
-export const modeLabel = (m: MapMode): string =>
-  MAP_MODES.find((x) => x.key === m)?.label ?? m;
+export const modeLabel = (m: MapMode): string => t(`label.mode.${m}`);
 
-export const modeDesc = (m: MapMode): string =>
-  MAP_MODES.find((x) => x.key === m)?.desc ?? "";
+export const modeDesc = (m: MapMode): string => t(`label.modeDesc.${m}`);
 
-export const diffLabel = (d: DifficultyKey): string =>
-  d === "easy" ? "쉬움" : d === "normal" ? "보통" : "어려움";
+export const diffLabel = (d: DifficultyKey): string => t(`label.diff.${d}`);
 
-export const stateLabel = (s: RoomState): string =>
-  s === "waiting" ? "대기" : s === "ended" ? "종료" : "진행중";
+export const stateLabel = (s: RoomState): string => t(`label.state.${s}`);
 
 // 서버 Ack.error → 사용자 문구
 const ERR_LABELS: Record<string, string> = {
-  notFound: "방을 찾을 수 없습니다",
-  full: "정원이 가득 찼습니다",
-  playing: "이미 게임이 진행 중인 방입니다",
-  badPassword: "비밀번호가 일치하지 않습니다",
-  notHost: "방장만 할 수 있는 작업입니다",
-  badNickname: "닉네임은 1~12자로 입력하세요",
-  badRequest: "잘못된 요청입니다",
-  notInRoom: "방에 입장한 상태가 아닙니다",
-  notPlaying: "게임 중이 아닙니다",
-  quota: "아이템을 모두 사용했습니다",
-  noQuota: "아이템을 모두 사용했습니다",
-  noPower: "발동 중인 콤보 효과가 없습니다",
-  notComplete: "아직 도감을 완성하지 못했습니다",
-  alreadyClaimed: "이미 보상을 받았습니다",
-  timeout: "서버 응답이 없습니다 — 서버 실행 여부를 확인하세요",
+  notFound: "error.notFound",
+  full: "error.full",
+  playing: "error.playing",
+  badPassword: "error.badPassword",
+  notHost: "error.notHost",
+  badNickname: "error.badNickname",
+  badRequest: "error.badRequest",
+  notInRoom: "error.notInRoom",
+  notPlaying: "error.notPlaying",
+  quota: "error.quota",
+  noQuota: "error.noQuota",
+  noPower: "error.noPower",
+  notComplete: "error.notComplete",
+  alreadyClaimed: "error.alreadyClaimed",
+  timeout: "error.timeout",
 };
 
 export const errText = (e?: string): string => {
-  if (!e) return "오류가 발생했습니다";
-  if (ERR_LABELS[e]) return ERR_LABELS[e];
+  if (!e) return t("error.generic");
+  if (ERR_LABELS[e]) return t(ERR_LABELS[e]);
   // 서버 guard 가 이미 한글 안내 문구를 error 로 보낸 경우(예: match.ts stuck 가드) 그대로 노출한다.
   // ERR_LABELS 에 없다고 "오류가 발생했습니다 (…)" 로 이중 표기하면 안내 문구가 뭉개진다.
   if (/[가-힣]/.test(e)) return e;
-  return `오류가 발생했습니다 (${e})`;
+  return t("error.genericDetail", { error: e });
 };
 
 /** 초 → "mm:ss" */

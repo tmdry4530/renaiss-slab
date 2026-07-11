@@ -8,6 +8,7 @@ import type {
   MapMode,
   RoomDetail,
 } from "../../shared/protocol.ts";
+import { t } from "../i18n.ts";
 import { gameLabel, modeLabel } from "../labels.ts";
 
 // ── 프리셋 정의 (테마명 상수 배열, 14종) ─────────────────────────
@@ -27,21 +28,30 @@ export interface MapPreset {
 const POKE_SPRITE = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/";
 const POKE_ITEM = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/";
 
+function preset(definition: Omit<MapPreset, "name">): MapPreset {
+  return {
+    ...definition,
+    get name() {
+      return t(`map.preset.${definition.id}`);
+    },
+  };
+}
+
 export const MAP_PRESETS: MapPreset[] = [
-  { id: "straw-hat",    name: "밀짚모자",   emoji: "👒", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "straw-hat" },
-  { id: "devil-fruit",  name: "악마의 열매", emoji: "🍎", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "devil-fruit" },
-  { id: "monster-ball", name: "몬스터볼",   emoji: "🔴", iconUrl: POKE_ITEM + "poke-ball.png", mapMode: "up",       difficulty: "easy", game: "pokemon", theme: "monster-ball" },
-  { id: "pikachu",      name: "피카츄",     emoji: "⚡", iconUrl: POKE_SPRITE + "25.png",  mapMode: "shanghai", difficulty: "hard", game: "pokemon", theme: "pikachu" },
-  { id: "charizard",    name: "리자몽",     emoji: "🔥", iconUrl: POKE_SPRITE + "6.png",   mapMode: "victory",  difficulty: "hard", game: "pokemon", theme: "charizard" },
-  { id: "jolly-roger",  name: "해적깃발",   emoji: "☠️", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "jolly-roger" },
-  { id: "bulbasaur",    name: "이상해씨",   emoji: "🌿", iconUrl: POKE_SPRITE + "1.png",   mapMode: "rolling",  difficulty: "easy", game: "pokemon", theme: "bulbasaur" },
-  { id: "squirtle",     name: "꼬북이",     emoji: "💧", iconUrl: POKE_SPRITE + "7.png",   mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "squirtle" },
-  { id: "luffy",        name: "루피",       emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "luffy" },
-  { id: "nami",         name: "나미",       emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "nami" },
-  { id: "sudowoodo",    name: "꼬지모",     emoji: "🌳", iconUrl: POKE_SPRITE + "185.png", mapMode: "normal", difficulty: "easy", game: "pokemon", theme: "sudowoodo" },
-  { id: "mewtwo",       name: "뮤츠",       emoji: "💜", iconUrl: POKE_SPRITE + "150.png", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" },
-  { id: "chopper",      name: "초파",       emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" },
-  { id: "going-merry",  name: "고잉메리호", emoji: "⛵", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "going-merry" },
+  preset({ id: "straw-hat",    emoji: "👒", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "straw-hat" }),
+  preset({ id: "devil-fruit",  emoji: "🍎", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "devil-fruit" }),
+  preset({ id: "monster-ball", emoji: "🔴", iconUrl: POKE_ITEM + "poke-ball.png", mapMode: "up",       difficulty: "easy", game: "pokemon", theme: "monster-ball" }),
+  preset({ id: "pikachu",      emoji: "⚡", iconUrl: POKE_SPRITE + "25.png",  mapMode: "shanghai", difficulty: "hard", game: "pokemon", theme: "pikachu" }),
+  preset({ id: "charizard",    emoji: "🔥", iconUrl: POKE_SPRITE + "6.png",   mapMode: "victory",  difficulty: "hard", game: "pokemon", theme: "charizard" }),
+  preset({ id: "jolly-roger",  emoji: "☠️", mapMode: "normal",   difficulty: "easy", game: "one-piece", theme: "jolly-roger" }),
+  preset({ id: "bulbasaur",    emoji: "🌿", iconUrl: POKE_SPRITE + "1.png",   mapMode: "rolling",  difficulty: "easy", game: "pokemon", theme: "bulbasaur" }),
+  preset({ id: "squirtle",     emoji: "💧", iconUrl: POKE_SPRITE + "7.png",   mapMode: "up",       difficulty: "hard", game: "pokemon", theme: "squirtle" }),
+  preset({ id: "luffy",        emoji: "🐸", mapMode: "victory",  difficulty: "hard", game: "one-piece", theme: "luffy" }),
+  preset({ id: "nami",         emoji: "🌊", mapMode: "shanghai", difficulty: "easy", game: "one-piece", theme: "nami" }),
+  preset({ id: "sudowoodo",    emoji: "🌳", iconUrl: POKE_SPRITE + "185.png", mapMode: "normal", difficulty: "easy", game: "pokemon", theme: "sudowoodo" }),
+  preset({ id: "mewtwo",       emoji: "💜", iconUrl: POKE_SPRITE + "150.png", mapMode: "normal",   difficulty: "hard", game: "pokemon", theme: "mewtwo" }),
+  preset({ id: "chopper",      emoji: "🦌", mapMode: "rolling",  difficulty: "easy", game: "one-piece", theme: "chopper" }),
+  preset({ id: "going-merry",  emoji: "⛵", mapMode: "up",       difficulty: "hard", game: "one-piece", theme: "going-merry" }),
 ];
 
 // 맵 아이콘: iconUrl(포켓몬 스프라이트)이 있으면 픽셀아트 이미지로, 로드 실패(onError)나 미지정이면 이모지로.
@@ -78,27 +88,16 @@ export function MapIcon({
 
 // 맵 난이도 라벨(초급/중급/고급) — 게임 난이도 라벨(쉬움/보통/어려움)과 구분
 export const mapDiffLabel = (d: DifficultyKey): string =>
-  d === "easy" ? "초급" : d === "normal" ? "중급" : "고급";
+  t(`map.diff.${d}`);
 
 const ipClass = (g: MapPreset["game"]): string => (g === "pokemon" ? "pokemon" : "onepiece");
 
 type TypeFilter = MapMode | "all";
 type DiffFilter = DifficultyKey | "all";
 
-const TYPE_OPTS: { key: TypeFilter; label: string }[] = [
-  { key: "all", label: "전체" },
-  { key: "normal", label: "일반" },
-  { key: "rolling", label: "롤링" },
-  { key: "up", label: "UP" },
-  { key: "victory", label: "승리" },
-  { key: "shanghai", label: "상하이" },
-];
+const TYPE_OPTS: TypeFilter[] = ["all", "normal", "rolling", "up", "victory", "shanghai"];
 // 프리셋 난이도는 초급/고급만 존재 → 목업대로 전체/초급/고급 (중급 제외, 빈 결과 방지)
-const DIFF_OPTS: { key: DiffFilter; label: string }[] = [
-  { key: "all", label: "전체" },
-  { key: "easy", label: "초급" },
-  { key: "hard", label: "고급" },
-];
+const DIFF_OPTS: DiffFilter[] = ["all", "easy", "hard"];
 
 interface Props {
   room: RoomDetail;
@@ -168,27 +167,27 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
           borderBottom: "1px solid var(--border)",
         }}
       >
-        {room.name} <span className="muted">— 맵 선택</span>
+        {t("map.selectTitle", { name: room.name })}
       </div>
 
       {/* 좌: 필터 */}
       <aside style={{ padding: "16px 12px", overflow: "auto", borderRight: "1px solid var(--border)" }}>
         <div style={{ marginBottom: 22 }}>
-          <div className="section-label">맵 유형</div>
+          <div className="section-label">{t("map.type")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {TYPE_OPTS.map((o) => (
-              <button key={o.key} style={fbtn(typeF === o.key)} onClick={() => setTypeF(o.key)}>
-                {o.label}
+              <button key={o} style={fbtn(typeF === o)} onClick={() => setTypeF(o)}>
+                {o === "all" ? t("map.all") : modeLabel(o)}
               </button>
             ))}
           </div>
         </div>
         <div style={{ marginBottom: 22 }}>
-          <div className="section-label">난이도</div>
+          <div className="section-label">{t("map.difficulty")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {DIFF_OPTS.map((o) => (
-              <button key={o.key} style={fbtn(diffF === o.key)} onClick={() => setDiffF(o.key)}>
-                {o.label}
+              <button key={o} style={fbtn(diffF === o)} onClick={() => setDiffF(o)}>
+                {o === "all" ? t("map.all") : mapDiffLabel(o)}
               </button>
             ))}
           </div>
@@ -197,7 +196,7 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
           <div className="section-label">IP</div>
           {/* IP 는 방 생성 시 확정 — 대기실에서 바꿀 수 없다(스펙 B). 선택 가능한 필터가 아니라 안내만 표시. */}
           <div className={`badge-ip ${room.game === "pokemon" ? "pokemon" : "onepiece"}`} style={{ display: "inline-block" }}>
-            {gameLabel(room.game)} 전용
+            {t("map.exclusive", { game: gameLabel(room.game) })}
           </div>
         </div>
       </aside>
@@ -238,7 +237,7 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
           })}
           {list.length === 0 && (
             <p className="muted" style={{ gridColumn: "1 / -1", padding: 20, textAlign: "center" }}>
-              조건에 맞는 맵이 없습니다.
+              {t("map.empty")}
             </p>
           )}
         </div>
@@ -256,7 +255,7 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
         }}
       >
         <button className="btn btn-dark" onClick={onCancel}>
-          취소
+          {t("map.cancel")}
         </button>
         <button
           className="btn btn-accent"
@@ -266,7 +265,7 @@ export default function MapSelect({ room, onCancel, onConfirm }: Props) {
             if (p) onConfirm(p);
           }}
         >
-          선택 완료
+          {t("map.confirm")}
         </button>
       </div>
     </div>

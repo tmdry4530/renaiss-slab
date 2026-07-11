@@ -11,6 +11,7 @@ import {
 } from "../../shared/protocol.ts";
 import { getSocket } from "../net.ts";
 import { diffLabel, errText, gameLabel, modeLabel } from "../labels.ts";
+import { t, useLang } from "../i18n.ts";
 
 interface Props {
   nickname: string;
@@ -48,7 +49,7 @@ const MAP_MODE_VALUES: MapMode[] = MAP_MODES.map((m) => m.key);
 
 function loadDraft(nickname: string): DraftConfig {
   const base: DraftConfig = {
-    name: `${nickname}의 방`,
+    name: t("lobby.defaultRoomName", { name: nickname }),
     maxPlayers: 4,
     visibility: "public",
     password: "",
@@ -91,9 +92,11 @@ function loadCounter(key: string): number {
 const modeTagClass = (m: MapMode): string => m;
 
 export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onDex, flash }: Props) {
+  const { lang } = useLang();
   const [rooms, setRooms] = useState<RoomSummary[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [draft, setDraft] = useState<DraftConfig>(() => loadDraft(nickname));
+  const [roomNameEdited, setRoomNameEdited] = useState(false);
   const [joinTarget, setJoinTarget] = useState<RoomSummary | null>(null);
   const [joinPwd, setJoinPwd] = useState("");
   const [joinErr, setJoinErr] = useState<string | null>(null);
@@ -104,6 +107,15 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
   const [wins] = useState(() => loadCounter(STAT_WINS_KEY));
   const [dexPct, setDexPct] = useState<number | null>(null);
   const [level, setLevel] = useState(1);
+
+  useEffect(() => {
+    if (!roomNameEdited) {
+      setDraft((current) => ({
+        ...current,
+        name: t("lobby.defaultRoomName", { name: nickname }),
+      }));
+    }
+  }, [lang, nickname, roomNameEdited]);
 
   // ── 방 목록: 주기 갱신(4초) + 수동 새로고침 ─────────────────
   const refresh = useCallback(() => {
@@ -194,7 +206,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
 
   function buildConfig(d: DraftConfig): RoomConfig {
     return {
-      name: d.name.trim() || `${nickname}의 방`,
+      name: d.name.trim() || t("lobby.defaultRoomName", { name: nickname }),
       visibility: d.visibility,
       ...(d.visibility === "private" && d.password ? { password: d.password } : {}),
       maxPlayers: d.maxPlayers,
@@ -225,7 +237,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
     if (busy) return;
     setBusy(true);
     const cfg: RoomConfig = {
-      name: `${nickname}의 싱글 플레이`,
+      name: t("lobby.soloRoomName", { name: nickname }),
       visibility: "public",
       maxPlayers: 1,
       game: draft.game,
@@ -266,9 +278,9 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
         {/* ── 좌: 방 목록 ── */}
         <main>
           <div className="toolbar">
-            <button className="btn btn-ghost" onClick={refresh}>🔄 새로고침</button>
-            <button className="btn btn-accent" onClick={() => setCreateOpen(true)}>＋ 방 만들기</button>
-            <button className="btn btn-dark" onClick={soloPlay} disabled={busy}>⚡ 바로 시작</button>
+            <button className="btn btn-ghost" onClick={refresh}>🔄 {t("lobby.refresh")}</button>
+            <button className="btn btn-accent" onClick={() => setCreateOpen(true)}>＋ {t("lobby.createRoom")}</button>
+            <button className="btn btn-dark" onClick={soloPlay} disabled={busy}>⚡ {t("lobby.quickStart")}</button>
           </div>
 
           {/* 테이블 헤더 */}
@@ -276,17 +288,17 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
             className="section-label"
             style={{ ...rowGrid, borderBottom: "1px solid var(--border)", paddingBottom: 10, margin: 0 }}
           >
-            <span>방 제목</span>
-            <span>맵</span>
-            <span>인원</span>
-            <span>방장</span>
+            <span>{t("lobby.roomTitle")}</span>
+            <span>{t("lobby.map")}</span>
+            <span>{t("lobby.players")}</span>
+            <span>{t("lobby.host")}</span>
             <span />
           </div>
 
-          {rooms === null && <p className="muted" style={{ padding: "16px 2px" }}>방 목록을 불러오는 중…</p>}
+          {rooms === null && <p className="muted" style={{ padding: "16px 2px" }}>{t("lobby.loading")}</p>}
           {rooms !== null && rooms.length === 0 && (
             <p className="muted" style={{ padding: "16px 2px" }}>
-              아직 열린 방이 없어요. <b>방 만들기</b>로 첫 방을 열거나 <b>바로 시작</b>으로 시작해 보세요.
+              {t("lobby.empty")}
             </p>
           )}
 
@@ -307,7 +319,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
                   {/* 방 제목 */}
                   <span style={{ fontWeight: 700, minWidth: 0, display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {rm.hasPassword && <span title="비밀번호 방">🔒 </span>}
+                      {rm.hasPassword && <span title={t("lobby.passwordRoom")}>🔒 </span>}
                       {rm.name}
                     </span>
                     {full && <span className="badge-full">FULL</span>}
@@ -345,7 +357,11 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
                     disabled={!joinable || busy}
                     onClick={() => onJoinClick(rm)}
                   >
-                    {rm.state !== "waiting" ? "진행중" : full ? "정원초과" : "입장"}
+                    {rm.state !== "waiting"
+                      ? t("lobby.inProgress")
+                      : full
+                        ? t("lobby.full")
+                        : t("lobby.join")}
                   </button>
                 </div>
               );
@@ -356,7 +372,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
         <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* 프로필 카드 */}
           <div>
-            <div className="section-label">내 프로필</div>
+            <div className="section-label">{t("lobby.myProfile")}</div>
             <div className="panel" style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div className="avatar lg">🐵</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
@@ -374,15 +390,15 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
           <div className="stat-grid">
             <div className="stat">
               <div className="stat-num">{totalPlays}</div>
-              <div className="stat-label">총 플레이</div>
+              <div className="stat-label">{t("lobby.totalPlays")}</div>
             </div>
             <div className="stat">
               <div className="stat-num">{wins}</div>
-              <div className="stat-label">1위 횟수</div>
+              <div className="stat-label">{t("lobby.wins")}</div>
             </div>
             <div className="stat wide">
               <div className="stat-num">{dexPct === null ? "—" : `${dexPct}%`}</div>
-              <div className="stat-label">도감 달성</div>
+              <div className="stat-label">{t("lobby.dexProgress")}</div>
             </div>
           </div>
 
@@ -394,9 +410,11 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
             >
               RENAISS MARKET
             </span>
-            <strong style={{ fontSize: 16, lineHeight: 1.35 }}>진짜 카드를<br />온라인에서 소유하세요</strong>
+            <strong style={{ fontSize: 16, lineHeight: 1.35 }}>
+              {t("lobby.marketTitleLine1")}<br />{t("lobby.marketTitleLine2")}
+            </strong>
             <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
-              PSA 등급 카드를 디지털로 소유하고, 원하면 실물로 받을 수 있습니다.
+              {t("lobby.marketDesc")}
             </p>
             <a
               className="btn btn-accent btn-block"
@@ -405,7 +423,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
               rel="noreferrer"
               style={{ textAlign: "center", marginTop: 4 }}
             >
-              마켓 구경하기 →
+              {t("lobby.marketLink")}
             </a>
           </div>
 
@@ -413,8 +431,10 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
 
           {/* 하단 도감·설정 */}
           <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn btn-dark btn-block" onClick={onDex}>📖 도감</button>
-            <button className="btn btn-dark btn-block" onClick={() => flash("설정은 준비 중입니다")}>⚙ 설정</button>
+            <button className="btn btn-dark btn-block" onClick={onDex}>📖 {t("lobby.dex")}</button>
+            <button className="btn btn-dark btn-block" onClick={() => flash(t("lobby.settingsPending"))}>
+              ⚙ {t("lobby.settings")}
+            </button>
           </div>
         </aside>
       </div>
@@ -423,46 +443,49 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
       {createOpen && (
         <div className="modal-back" onClick={() => setCreateOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>방 만들기</h3>
+            <h3>{t("lobby.createRoom")}</h3>
             <div className="mfield">
-              <label>방 이름</label>
+              <label>{t("lobby.roomName")}</label>
               <input
                 value={draft.name}
                 maxLength={24}
-                onChange={(e) => saveDraft({ ...draft, name: e.target.value })}
+                onChange={(e) => {
+                  setRoomNameEdited(true);
+                  saveDraft({ ...draft, name: e.target.value });
+                }}
               />
             </div>
             <div className="mfield">
-              <label>최대 인원</label>
+              <label>{t("lobby.maxPlayers")}</label>
               <div className="seg">
                 {[1, 2, 3, 4].map((n) => (
                   <button key={n} className={draft.maxPlayers === n ? "on" : ""} onClick={() => saveDraft({ ...draft, maxPlayers: n })}>
-                    {n}명
+                    {t("lobby.playerCount", { count: n })}
                   </button>
                 ))}
               </div>
             </div>
             <div className="mfield">
-              <label>공개 여부</label>
+              <label>{t("lobby.visibility")}</label>
               <div className="seg">
-                <button className={draft.visibility === "public" ? "on" : ""} onClick={() => saveDraft({ ...draft, visibility: "public" })}>공개</button>
-                <button className={draft.visibility === "private" ? "on" : ""} onClick={() => saveDraft({ ...draft, visibility: "private" })}>비공개</button>
+                <button className={draft.visibility === "public" ? "on" : ""} onClick={() => saveDraft({ ...draft, visibility: "public" })}>{t("lobby.public")}</button>
+                <button className={draft.visibility === "private" ? "on" : ""} onClick={() => saveDraft({ ...draft, visibility: "private" })}>{t("lobby.private")}</button>
               </div>
             </div>
             {draft.visibility === "private" && (
               <div className="mfield">
-                <label>비밀번호</label>
+                <label>{t("lobby.password")}</label>
                 <input
                   type="password"
                   value={draft.password}
                   maxLength={20}
-                  placeholder="비워두면 비밀번호 없음"
+                  placeholder={t("lobby.passwordPlaceholder")}
                   onChange={(e) => saveDraft({ ...draft, password: e.target.value })}
                 />
               </div>
             )}
             <div className="mfield">
-              <label>카드</label>
+              <label>{t("lobby.cards")}</label>
               <div className="seg">
                 {(["pokemon", "one-piece"] as GameSel[]).map((g) => (
                   <button key={g} className={draft.game === g ? "on" : ""} onClick={() => saveDraft({ ...draft, game: g })}>
@@ -472,12 +495,12 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
               </div>
             </div>
             <p className="muted small" style={{ margin: "2px 0 4px" }}>
-              맵 모드·난이도는 방을 만든 뒤 <b>대기실에서 방장이</b> 선택합니다.
+              {t("lobby.mapNote")}
             </p>
             <div className="modal-actions">
-              <button className="ghost" onClick={() => setCreateOpen(false)}>취소</button>
+              <button className="ghost" onClick={() => setCreateOpen(false)}>{t("lobby.cancel")}</button>
               <button className="btn primary" onClick={createRoom} disabled={busy || draft.name.trim().length === 0}>
-                방 만들기
+                {t("lobby.createRoom")}
               </button>
             </div>
           </div>
@@ -489,7 +512,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
         <div className="modal-back" onClick={() => setJoinTarget(null)}>
           <div className="modal small-modal" onClick={(e) => e.stopPropagation()}>
             <h3>🔒 {joinTarget.name}</h3>
-            <p className="muted small">비공개 방입니다. 비밀번호를 입력하세요.</p>
+            <p className="muted small">{t("lobby.privatePrompt")}</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -500,7 +523,7 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
                 type="password"
                 value={joinPwd}
                 autoFocus
-                placeholder="비밀번호"
+                placeholder={t("lobby.password")}
                 onChange={(e) => {
                   setJoinPwd(e.target.value);
                   setJoinErr(null);
@@ -508,8 +531,8 @@ export default function Lobby({ nickname, playerId, onEnterRoom, onSoloRoom, onD
               />
               {joinErr && <p className="form-error">{joinErr}</p>}
               <div className="modal-actions">
-                <button type="button" className="ghost" onClick={() => setJoinTarget(null)}>취소</button>
-                <button type="submit" className="btn primary" disabled={busy}>입장</button>
+                <button type="button" className="ghost" onClick={() => setJoinTarget(null)}>{t("lobby.cancel")}</button>
+                <button type="submit" className="btn primary" disabled={busy}>{t("lobby.join")}</button>
               </div>
             </form>
           </div>
