@@ -1,80 +1,81 @@
 # Renaiss Slab King
 
-사천성 방식 실시간 카드 매칭 퍼즐 — **문서(PRD·기능정의서·TECH-SPEC) 요구 기능 전체 구현**.
-실제 Renaiss 카드(포켓몬·원피스)를 타일로 사용하고, 가격·등급 데이터는 **Renaiss OS Index**에서,
-마켓·팩(가챠) 컨텍스트는 **공식 `renaiss` CLI**에서 가져온다.
+**English** · [한국어](./README.ko.md)
 
-> 기획·기술 문서는 [`docs/`](./docs) 참조 (PRD · 기능정의서 · TECH-SPEC · CTO-QNA).
+A real-time Sichuan-style (Shisen-Sho) card-matching puzzle — **full implementation of every feature required by the project docs (PRD · FEATURE_SPEC · TECH-SPEC)**.
+It uses real Renaiss cards (Pokémon · One Piece) as tiles, pulls price and grade data from the **Renaiss OS Index**, and gets marketplace / pack (gacha) context from the **official `renaiss` CLI**.
 
-## 빠른 시작
+> Planning and technical docs live in [`docs/`](./docs) (PRD · FEATURE_SPEC · TECH-SPEC · CTO-QNA).
+
+## Quick start
 
 ```bash
 npm install
-npm run prefetch   # (선택) 데이터 스냅샷 최신화. 미실행 시 동봉된 스냅샷 사용
-npm run dev        # 게임 서버(8787) + 웹(5173) 동시 기동 → http://localhost:5173
+npm run prefetch   # (optional) refresh the data snapshot. Skips to the bundled snapshot if not run
+npm run dev        # game server (8787) + web (5173) together → http://localhost:5173
 ```
 
-프로덕션: `npm run build` → `npm start` (단일 프로세스가 dist/ 정적 서빙 + API + WebSocket, http://localhost:8787)
+Production: `npm run build` → `npm start` (a single process serves dist/ static files + API + WebSocket at http://localhost:8787)
 
-## 구현 기능 (FEATURE_SPEC F-01~F-16)
+## Implemented features (FEATURE_SPEC F-01–F-16)
 
-| 영역 | 내용 |
+| Area | Details |
 | --- | --- |
-| 계정 (F-01) | 게스트 닉네임 로그인(데모 범위). playerId 로컬 영속 |
-| 대기실 (F-02/03) | 방 생성(1~4인·공개/비공개·비밀번호), 방 목록, 입장 검증(정원/진행중/비밀번호), 방장 승계, "혼자 바로 하기" |
-| 게임 설정 (F-04/05/06) | 카드 세트(포켓몬/원피스/혼합), 맵 모드 5종, 난이도 3종(카드 종류 수 차등), 방장만 변경·시작 |
-| 매칭 (F-07) | 꺾임 ≤2 경로 판정(서버 권위), 연결선 이펙트, 교착 자동 재섞기, 비사각형 마스크 5종 |
-| 맵 모드 (F-08) | 일반 · 롤링(3초 우측 순환) · UP(줄 소진 시 하단 주입 상승) · 승리(특수 짝 → 즉시 1위·즉시 종료) · 상하이(2겹층) |
-| 콤보 (F-09) | 2초 창, 5/15콤보 → 지정 카드 짝 제거, 10/20콤보 → 동일 카드 전체 제거 |
-| 아이템 (F-10) | 서치 3 · 섞기 3 · 가위 1 (경로 무관 강제 제거, 콤보 반영) |
-| 순위 (F-11) | 1위 확정 후 10초 유예 → 잔여 패·점수 기준 순위. 상대 진행 미니뷰 |
-| 도감 (F-12/13/14) | 동일 카드 누적 10회 → 등록. 포켓몬/원피스 탭, 달성률, 마켓 "자세히 보기", 100% 달성 시 SBT(목 발급) |
-| 결과 (F-15) | 순위표, 점수·시간·경험치, 오늘 만난 카드, 등급 분포, 최고가 카드, 마켓/보상 버튼, 재플레이 |
-| 데이터 정책 (F-16) | 시세·등급 임의 생성 금지, 결측 시 "예시 데이터" 라벨, 상시 "Renaiss OS Index" 출처 표기 |
+| Account (F-01) | Guest nickname login (demo scope). playerId persisted locally |
+| Lobby (F-02/03) | Room creation (1–4 players · public/private · password), room list, join validation (capacity / in-progress / password), host succession, "play solo now" |
+| Game settings (F-04/05/06) | Card set (Pokémon / One Piece / mixed), 5 map modes, 3 difficulties (varying number of card kinds), host-only change & start |
+| Matching (F-07) | ≤2-turn path resolution (server-authoritative), connection-line effect, auto-reshuffle on deadlock, 5 non-rectangular masks |
+| Map modes (F-08) | Normal · Rolling (rightward cycle every 3s) · UP (rows injected from bottom, rising, as lines clear) · Win (special pair → instant 1st place & immediate end) · Shanghai (2-layer stack) |
+| Combo (F-09) | 2-second window; 5/15 combo → removes a designated card pair, 10/20 combo → removes all of one card |
+| Items (F-10) | Search 3 · Shuffle 3 · Scissors 1 (path-agnostic forced removal, counts toward combo) |
+| Ranking (F-11) | 10-second grace after 1st place is decided → rank by remaining tiles / score. Opponent-progress mini-view |
+| Dex (F-12/13/14) | Same card seen 10× cumulatively → registered. Pokémon / One Piece tabs, completion rate, marketplace "view details", SBT (mock issuance) at 100% completion |
+| Result (F-15) | Ranking table, score · time · XP, cards met today, grade distribution, top-priced card, marketplace/reward buttons, replay |
+| Data policy (F-16) | No arbitrary generation of price/grade, "example data" label when missing, "Renaiss OS Index" attribution shown at all times |
 
-## 아키텍처 (TECH-SPEC §2)
-
-```
-src/  (React 18 + Vite)  ←WebSocket/REST→  server/ (Fastify + Socket.IO, 서버 권위)
-        └────────────── shared/ (공용 엔진: 판정·보드·모드·콤보·점수·프로토콜) ──────────────┘
-```
-
-- **서버 권위**: 보드 생성(시드)·매칭 판정·점수·콤보·아이템·모드 틱 전부 서버 계산. 클라이언트는 의도만 전송.
-- **개인전 동일 보드**: 매치당 시드 1개, 전원 같은 보드를 각자 풀고 진행도 공유 (TECH-SPEC §3.4).
-- 렌더링은 React DOM 유지(PixiJS 미사용 — 문서 가정 대비 변경, 로컬 데모 성능 충분).
+## Architecture (TECH-SPEC §2)
 
 ```
-shared/    protocol.ts(계약) · cards.ts · shisen.ts(BFS) · board.ts(마스크·모드) · combo.ts · score.ts
-server/    index.ts(REST·소켓) · rooms.ts(방) · match.ts(매치 권위) · dex.ts(도감·SBT, .data/dex.json 영속)
-src/       net.ts(타입드 소켓) · screens/(Login·Lobby·Room·Game·Result·Dex)
+src/  (React 18 + Vite)  ←WebSocket/REST→  server/ (Fastify + Socket.IO, server-authoritative)
+        └────────────── shared/ (shared engine: resolution · board · modes · combo · score · protocol) ──────────────┘
+```
+
+- **Server-authoritative**: board generation (seed), match resolution, score, combo, items, and mode ticks are all computed on the server. The client sends intent only.
+- **Same board in solo play**: one seed per match; everyone solves the same board independently and shares progress (TECH-SPEC §3.4).
+- Rendering stays on React DOM (no PixiJS — a change from the doc assumption; performance is sufficient for the local demo).
+
+```
+shared/    protocol.ts (contract) · cards.ts · shisen.ts (BFS) · board.ts (masks · modes) · combo.ts · score.ts
+server/    index.ts (REST · sockets) · rooms.ts (rooms) · match.ts (match authority) · dex.ts (Dex · SBT, persisted to .data/dex.json)
+src/       net.ts (typed socket) · screens/ (Login · Lobby · Room · Game · Result · Dex)
 scripts/   prefetch-*.mjs · test-*.ts
 ```
 
-## 테스트
+## Tests
 
 ```bash
-npm test   # 연결판정 6 · 보드 9 · 모드/콤보/마스크 78 · 시뮬 9(전 난이도 자동클리어) · 서버 e2e 59
+npm test   # path resolution 6 · board 9 · mode/combo/mask 78 · sim 9 (auto-clear across all difficulties) · server e2e 59
 ```
 
-서버 e2e 는 실제 소켓 2클라이언트로 방 생성→입장→시작→자동 플레이→클리어→유예→순위·요약까지 검증.
+The server e2e uses two real socket clients to verify the full path: room creation → join → start → auto-play → clear → grace → ranking & summary.
 
-## 데이터 파이프라인
+## Data pipeline
 
-| 용도 | 소스 | 산출물 | 비고 |
+| Purpose | Source | Output | Notes |
 | --- | --- | --- | --- |
-| 카드 풀(퍼즐 타일·도감) | Renaiss OS Index `GET /v1/search` | `public/data/card-pool.json` | **이미지 포함**(imageUrl) |
-| 마켓 리스팅·팩 | 공식 `npx renaiss` CLI | `public/data/market-snapshot.json` | CLI 리스트엔 이미지 없음 → 컨텍스트용 |
+| Card pool (puzzle tiles · Dex) | Renaiss OS Index `GET /v1/search` | `public/data/card-pool.json` | **includes images** (imageUrl) |
+| Marketplace listings · packs | Official `npx renaiss` CLI | `public/data/market-snapshot.json` | CLI list has no images → context only |
 
-- `npm run prefetch:pool` — 공개 티어 60/분 제한 대응(스로틀 1.2s + 429 재시도). 탐색어는 `scripts/prefetch-pool.mjs`의 `QUERIES`.
-- `npm run prefetch:cli` — `renaiss marketplace` + `renaiss packs` 스냅샷.
+- `npm run prefetch:pool` — handles the public tier's 60/min limit (1.2s throttle + 429 retry). Search terms are in `QUERIES` in `scripts/prefetch-pool.mjs`.
+- `npm run prefetch:cli` — `renaiss marketplace` + `renaiss packs` snapshot.
 
-## 출처 표기 (필수)
+## Attribution (required)
 
-가격·등급 숫자를 표시할 때 **"Renaiss OS Index" + 출처 링크**가 의무다. 시세·등급은 임의 생성 금지, 실제 API 값만 사용. 결측 카드는 "예시 데이터" 라벨.
+When displaying price/grade numbers, **"Renaiss OS Index" + a source link** is mandatory. Prices/grades must never be arbitrarily generated — only real API values are used. Missing cards get an "example data" label.
 
-## 문서 대비 구현 가정 (미확정 → 코드 주석 명시)
+## Implementation assumptions vs. docs (unconfirmed → noted in code comments)
 
-- UP 트리거: "한 줄 전부 제거 시 상승"으로 해석 · 콤보 리셋: 실패 시 0, 2초 초과 시 1
-- 방장 퇴장: 다음 입장자 승계 · 게임 중 이탈: 매치 유지, 재접속 미지원
-- 난이도별 카드 종류 수 6/16/30 · 클리어 보너스 500점 · XP = 점수/10 + 클리어 50
-- SBT: 목(mock) 발급 (온체인 미연동) — 확정 질문은 [`docs/CTO-QNA.md`](./docs/CTO-QNA.md)
+- UP trigger: interpreted as "rise when a full row is cleared" · combo reset: 0 on failure, 1 when the 2s window is exceeded
+- Host leaves: succeeded by the next joiner · leaving mid-game: match continues, reconnection unsupported
+- Card kinds per difficulty 6/16/30 · clear bonus 500 pts · XP = score/10 + 50 on clear
+- SBT: mock issuance (not on-chain) — open questions in [`docs/CTO-QNA.md`](./docs/CTO-QNA.md)
